@@ -1,0 +1,115 @@
+/* 書き込みツールの操作バー */
+.annotation-tool-group, .annotation-settings-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+
+.annotation-toolbar .button, .annotation-settings-group .button {
+  min-height: var(--control-height);
+  padding: 5px 9px;
+}
+
+.annotation-tool-group .button {
+  white-space: nowrap;
+}
+
+.annotation-toolbars {
+  min-width: 0;
+  flex: none;
+}
+.annotation-toolbar {
+  justify-content: flex-start;
+}
+.annotation-selection-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-left: auto;
+}
+.annotation-selection-actions .count {
+  align-self: center;
+  white-space: nowrap;
+  min-width: 42px;
+}
+
+.annotation-drawing-tools {
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+  margin-left: 6px;
+}
+
+.annotation-tool-group button[aria-pressed="true"], #mark-range-select[aria-pressed="true"] {
+  color: var(--accent-dark);
+  border-color: #7396df;
+  background: var(--chosen);
+}
+
+/* 書き込みのプロパティ */
+/* 設定項目が増えてもプレビューの高さを動かさない。 */
+.annotation-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--mark-settings-height);
+  min-width: 0;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  white-space: nowrap;
+}
+.annotation-settings .annotation-settings-group {
+  flex: none;
+}
+.annotation-settings .annotation-settings-group:not([hidden]) ~ .annotation-settings-group {
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+.annotation-settings-placeholder {
+  color: #6d7786;
+  font-size: 12px;
+}
+.annotation-settings > .annotation-settings-group:not([hidden]) ~ .annotation-settings-placeholder {
+  display: none;
+}
+.annotation-settings-group .annotation-settings-heading {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.annotation-settings-group input[type="number"] {
+  width: 58px;
+  min-height: 33px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--white);
+  font-size: 13px;
+}
+
+.annotation-settings-group label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.annotation-settings-group input[type="color"] {
+  width: 34px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px;
+  background: white;
+}
+.annotation-settings-group input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.annotation-settings-group input:disabled {
+  opacity: .45;
+}

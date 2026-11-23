@@ -1,0 +1,161 @@
+/* 色・寸法・基本要素 */
+:root {
+  color-scheme: light;
+  --ink: #192747;
+  --muted: #52617a;
+  --line: #d2dbe7;
+  --paper: #f3f6fa;
+  --accent: #2355c4;
+  --accent-dark: #153d99;
+  --chosen: #edf3ff;
+  --danger: #9c3141;
+  --white: #fff;
+  --gutter: clamp(8px, .9vw, 16px);
+  --control-height: 36px;
+  --panel-header-height: 54px;
+  --panel-actions-height: 50px;
+  --mark-settings-height: 49px;
+  font-family: "Inter", "Noto Sans JP", "Hiragino Sans", "Yu Gothic", Meiryo, system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  font-size: 16px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+body {
+  margin: 0;
+  min-width: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+h1, h2, p {
+  margin: 0;
+}
+button, select, input {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+}
+:focus-visible {
+  outline: 3px solid #285cd0;
+  outline-offset: 3px;
+}
+
+h2 {
+  font-size: 16px;
+  letter-spacing: .015em;
+}
+
+.count, .muted {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ボタンとアイコン */
+.button {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 13px;
+  color: var(--ink);
+  background: var(--white);
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+.button:hover:not(:disabled) {
+  background: #e9eff9;
+  border-color: #a5b8d3;
+}
+.button:disabled {
+  color: #66738a;
+  background: #f2f5f9;
+}
+.button.primary {
+  background: var(--accent);
+  color: var(--white);
+  border-color: var(--accent);
+}
+.button.primary:hover:not(:disabled) {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+.button.primary:disabled {
+  background: #e4eaf5;
+  color: #5a6985;
+  border-color: #d2dbea;
+}
+.button.danger:not(:disabled) {
+  color: var(--danger);
+}
+.button.danger:hover:not(:disabled) {
+  background: #fef1f2;
+  border-color: #e8b9c1;
+}
+.tool-icon {
+  width: 19px;
+  height: 19px;
+  margin-right: 4px;
+  vertical-align: -3px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+button.button.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+  padding: 7px;
+  flex-shrink: 0;
+}
+button.button.icon-button .tool-icon {
+  margin: 0;
+  vertical-align: middle;
+}
+button.button.icon-button[aria-pressed="true"] {
+  color: var(--accent-dark);
+  border-color: #7396df;
+  background: var(--chosen);
+}
+
+/* 書き出しとパスワードの入力欄 */
+.export-fields textarea, .password-settings input[type="password"], #source-password {
+  min-width: 0;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #b7c4d8;
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--white);
+  font: inherit;
+}
+
+/* 入力方法と画面幅 */
+@media (any-pointer: coarse) {
+  :root {
+    --control-height: 44px;
+    --mark-settings-height: 54px;
+  }
+}
+
+@media (max-width: 760px) {
+  .button {
+    padding-inline: 9px;
+  }
+}

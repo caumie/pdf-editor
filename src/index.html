@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self'; font-src blob: data:; img-src 'self' blob: data:; base-uri 'none'; form-action 'none'">
+  <title>PDF編集</title>
+  <link rel="icon" type="image/svg+xml" href="./pdf-editor.svg">
+  <link rel="stylesheet" href="./css/base.css">
+  <link rel="stylesheet" href="./css/header.css">
+  <link rel="stylesheet" href="./css/workspace.css">
+  <link rel="stylesheet" href="./css/preview.css">
+  <link rel="stylesheet" href="./css/annotations.css">
+  <link rel="stylesheet" href="./css/dialogs.css">
+</head>
+<body>
+  <!-- 文書操作とダウンロード -->
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand">
+        <img class="brand-mark" src="./pdf-editor.svg" alt="">
+        <h1>PDF編集</h1>
+      </div>
+      <div class="document-actions" role="group" aria-label="ファイルの追加・クリアと履歴">
+        <button class="button" id="add-files" type="button" data-add disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg><span class="operation-label" data-idle="ファイルを追加" data-working="読み込み中…"><span id="add-files-label">ファイルを追加</span></span></button>
+        <button class="button" id="source-properties" type="button" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg><span id="source-properties-label">元PDF情報</span></button>
+        <div class="header-action-group">
+          <button class="button" id="clear-document" type="button" title="読み込んだファイルと書き込みをクリア" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg>クリア</button>
+        </div>
+        <div class="header-action-group" role="group" aria-label="編集履歴">
+          <button class="button icon-button" id="undo" type="button" disabled title="元に戻す（Ctrl / ⌘ + Z）" aria-label="元に戻す"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h10a5 5 0 0 1 0 10h-3M8 4 3 9l5 5"/></svg></button>
+          <button class="button icon-button" id="redo" type="button" disabled title="やり直す（Ctrl / ⌘ + Shift + Z）" aria-label="やり直す"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 9H11a5 5 0 0 0 0 10h3m2-15 5 5-5 5"/></svg></button>
+        </div>
+        <input id="file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple hidden>
+      </div>
+      <div class="header-output" id="header-output">
+        <button class="button primary" id="export-menu-toggle" type="button" aria-expanded="false" aria-controls="export-form" disabled><span class="operation-label" data-idle="ダウンロード" data-working="書き出し中…"><span id="export-menu-label">ダウンロード</span></span><span class="export-indicator" aria-hidden="true"><span id="export-menu-arrow"><svg class="tool-icon" viewBox="0 0 24 24"><path d="M4 8l8 8 8-8"/></svg></span><span class="export-spinner" id="export-spinner" hidden></span></span></button>
+        <form class="export-form" id="export-form" aria-labelledby="export-title" autocomplete="off" hidden>
+          <h2 id="export-title">書き出し設定</h2>
+          <div class="export-fields">
+            <label for="export-scope">対象ページ</label>
+            <select id="export-scope" aria-describedby="export-menu-count">
+              <option value="all">一覧のすべて</option>
+              <option value="selected">選択ページ</option>
+            </select>
+            <label for="export-format">形式</label>
+            <select id="export-format">
+              <option value="pdf">PDF</option>
+              <option value="jpg">JPEG</option>
+            </select>
+            <label for="export-layout">ダウンロード方法</label>
+            <select id="export-layout">
+              <option value="combined">1つのPDFにまとめる</option>
+              <option value="zip">ページ別ファイルをZIPで保存</option>
+            </select>
+            <label for="jpeg-dpi" id="jpeg-dpi-label" hidden>JPEG解像度</label>
+            <select id="jpeg-dpi" disabled hidden>
+              <option value="150" selected>150 DPI</option>
+              <option value="300">300 DPI</option>
+              <option value="600">600 DPI</option>
+            </select>
+            <label for="output-name">ファイル名</label>
+            <input id="output-name" type="text" maxlength="100" autocomplete="off" spellcheck="false" placeholder="編集済み_edit.pdf">
+          </div>
+          <section id="pdf-output-settings" aria-label="保存するPDFの情報と保護設定">
+            <details class="export-details" id="pdf-metadata-details">
+              <summary>PDFプロパティ</summary>
+              <div class="export-fields">
+                <label for="pdf-title">タイトル</label><input id="pdf-title" type="text" maxlength="2000">
+                <label for="pdf-author">著者</label><input id="pdf-author" type="text" maxlength="2000">
+                <label for="pdf-subject">件名</label><input id="pdf-subject" type="text" maxlength="4000">
+                <label for="pdf-keywords">キーワード</label><input id="pdf-keywords" type="text" maxlength="4000">
+                <label for="pdf-notes">備考</label><textarea id="pdf-notes" rows="2" maxlength="20000"></textarea>
+                <label for="pdf-creation-date">作成日時</label><input id="pdf-creation-date" type="text" readonly>
+                <label for="pdf-modification-date">更新日時</label><input id="pdf-modification-date" type="text" readonly>
+                <label for="pdf-creator">作成アプリ</label><input id="pdf-creator" type="text" readonly>
+                <label for="pdf-producer">生成ソフト</label><input id="pdf-producer" type="text" readonly>
+                <label for="pdf-version">PDFバージョン</label><input id="pdf-version" type="text" readonly>
+              </div>
+            </details>
+            <details class="export-details" id="pdf-permission-details">
+              <summary>権限・パスワード</summary>
+              <div class="permission-grid" id="pdf-permissions"></div>
+              <div class="password-settings">
+                <label><input id="pdf-user-password-enabled" type="checkbox"> 閲覧用パスワード</label>
+                <input id="pdf-user-password" type="password" autocomplete="new-password" aria-label="閲覧用パスワード" required disabled>
+              </div>
+            </details>
+          </section>
+          <div class="export-buttons">
+            <span class="count" id="export-menu-count">書き出し対象 0ページ</span>
+            <button class="button primary" id="export-submit" type="submit" disabled>ダウンロード</button>
+          </div>
+        </form>
+        <div class="settings-actions" id="settings-actions">
+          <button class="button icon-button" id="settings-menu-toggle" type="button" aria-label="設定" title="設定"
+            aria-expanded="false" aria-controls="settings-menu"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3h4l.6 2.5 2 .9L19 5.2l2 3.5-1.8 1.8v3l1.8 1.8-2 3.5-2.4-1.2-2 .9L14 21h-4l-.6-2.5-2-.9L5 18.8l-2-3.5 1.8-1.8v-3L3 8.7l2-3.5 2.4 1.2 2-.9z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          <div class="settings-menu" id="settings-menu" hidden>
+            <div class="settings-version">バージョン v0.1.0</div>
+            <button class="button" id="reset-settings" type="button">設定をデフォルトに戻す</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="workspace" id="workspace">
+      <!-- ページ一覧 -->
+      <section class="panel pages-panel" id="pages-panel" aria-labelledby="pages-title">
+        <header class="panel-header panel-toolbar">
+          <div class="panel-title-group pages-heading">
+            <h2 id="pages-title">ページ一覧</h2>
+            <span class="page-import-progress" role="status" aria-atomic="true"><span id="page-import-count"></span><span id="page-import-filename"></span></span>
+          </div>
+          <div class="page-selection-actions">
+            <span class="count" id="page-selection-count">選択 0</span>
+            <button class="button" id="select-all-pages" type="button" disabled>全選択</button>
+            <button class="button" id="clear-page-selection" type="button" disabled>選択解除</button>
+          </div>
+        </header>
+        <div class="page-edit-actions panel-toolbar" role="group" aria-label="ページ操作とサムネイル表示">
+          <button class="button icon-button danger" id="remove-pages" type="button"
+            title="選択したページを削除（Delete / Backspace）" disabled aria-label="選択ページを削除"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg></button>
+          <span class="page-action-separator" role="separator" aria-orientation="vertical"></span>
+          <button class="button icon-button" id="move-pages-earlier" type="button" disabled aria-label="選択ページを前へ" title="選択ページを前へ"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5h10v15H10zM9 12H2m4-4-4 4 4 4"/></svg></button>
+          <button class="button icon-button" id="move-pages-later" type="button" disabled aria-label="選択ページを後ろへ" title="選択ページを後ろへ"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h10v15H4zm11 7h7m-4-4 4 4-4 4"/></svg></button>
+          <span class="page-action-separator" role="separator" aria-orientation="vertical"></span>
+          <button class="button icon-button" id="rotate-pages-left" type="button" disabled title="選択ページを左に90°回転" aria-label="選択ページを左に90度回転"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a9 9 0 1 1 0 8M4 3v5h5M9 7h4l3 3v7H9zM13 7v3h3"/></svg></button>
+          <button class="button icon-button" id="rotate-pages-right" type="button" disabled title="選択ページを右に90°回転" aria-label="選択ページを右に90度回転"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8a9 9 0 1 0 0 8M20 3v5h-5M9 7h4l3 3v7H9zM13 7v3h3"/></svg></button>
+          <label class="thumbnail-control" for="thumbnail-size">サムネイル
+            <select id="thumbnail-size" autocomplete="off">
+              <option value="small">小</option>
+              <option value="medium" selected>中</option>
+              <option value="large">大</option>
+            </select>
+          </label>
+        </div>
+        <div class="page-area" id="page-area">
+          <div class="page-list-empty" id="page-list-empty">
+            <div class="page-list-empty-icon" aria-hidden="true"><span>PDF</span></div>
+            <h3 class="page-list-empty-title" id="page-list-empty-title">PDF・画像を追加</h3>
+            <p class="muted" id="page-list-empty-description">PDF・JPEG・PNGをまとめてドロップできます。</p>
+            <button class="button primary" id="page-list-add-files" type="button" data-add disabled>ファイルを選ぶ</button>
+          </div>
+          <ol class="page-grid" id="page-grid" role="list" aria-label="書き出し順のページ" hidden></ol>
+        </div>
+        <footer class="panel-footer">
+          <span class="count" id="page-list-count" role="status" aria-label="ページの情報">0ページ</span>
+        </footer>
+      </section>
+
+      <div class="pane-separator" id="pane-separator" role="separator" tabindex="0"
+        aria-label="ページ一覧とプレビューの幅" aria-controls="pages-panel preview-panel"
+        aria-orientation="vertical" aria-valuemin="0" aria-valuemax="72" aria-valuenow="50"
+        title="ドラッグで幅を調整。ダブルクリックで元の位置に戻す"></div>
+      <!-- プレビューと書き込み -->
+      <section class="panel preview-panel" id="preview-panel" data-tools-hidden="true" aria-labelledby="preview-title">
+        <header class="panel-header panel-toolbar">
+          <div class="panel-title-group preview-heading">
+            <h2 id="preview-title">プレビュー</h2>
+            <select class="preview-layout-select" id="preview-layout" aria-label="ページの表示方法" disabled><option value="single">単ページ</option><option value="spread">見開き</option></select>
+            <div class="preview-view-options" id="preview-view-options" role="group" aria-label="見開きの設定" hidden>
+              <label title="先頭ページを単独表示"><input id="preview-cover" type="checkbox" aria-label="先頭ページを単独表示" checked disabled>先頭を単独</label>
+              <select id="preview-direction" aria-label="見開きの開き方" title="左開き（左から右）／右開き（右から左）／上下開き（上から下）" disabled><option value="left">左開き</option><option value="right">右開き</option><option value="vertical">上下開き</option></select>
+            </div>
+            <button class="button preview-tools-toggle" id="preview-tools-toggle" type="button"
+              aria-controls="preview-edit-bars" aria-expanded="false" aria-pressed="false"
+              title="書き込みツールを表示・非表示">書き込みツール</button>
+          </div>
+          <div class="preview-actions" role="group" aria-label="ページ送りと表示倍率">
+            <button class="button preview-step-button" id="preview-prev" type="button" title="前のページ（←）" aria-label="前のページ" disabled>←</button>
+            <button class="button preview-step-button" id="preview-next" type="button" title="次のページ（→）" aria-label="次のページ" disabled>→</button>
+            <button class="button preview-step-button" id="zoom-out" type="button" aria-label="縮小" disabled>−</button>
+            <span class="muted zoom-level" id="zoom-level" aria-label="最後にページを合わせたときの大きさに対する倍率">100%</span>
+            <button class="button preview-step-button" id="zoom-in" type="button" aria-label="拡大" disabled>＋</button>
+            <button class="button icon-button" id="zoom-fit" type="button" disabled aria-label="ページに合わせる" title="ページに合わせる"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 7h8v10H8z"/></svg></button>
+          </div>
+        </header>
+        <div class="annotation-toolbars" id="preview-edit-bars" hidden>
+          <div class="annotation-toolbar panel-toolbar">
+            <div class="annotation-tool-group" role="group" aria-label="移動とオブジェクト選択">
+              <button class="button icon-button" data-tool="navigate" type="button" aria-pressed="true" disabled
+                title="1本指・ドラッグで表示を移動。2本指・ホイールで拡大縮小" aria-label="ページの移動・拡大縮小"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3"/></svg></button>
+              <button class="button icon-button" data-tool="select" type="button" aria-pressed="false" disabled
+                title="書き込みを選択。Shift / Ctrl / ⌘で追加選択。テキストはダブルクリックで編集" aria-label="オブジェクトを選択"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 3 14 10-7 1-3 7z"/></svg></button>
+            </div>
+            <div class="annotation-tool-group annotation-drawing-tools" role="group" aria-label="書き込みツール">
+              <button class="button icon-button" data-tool="highlight" type="button" aria-pressed="false"
+                disabled title="PDFの文字を選んでハイライト" aria-label="ハイライト"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 11 8-8 4 4-8 8H9zm0 4-4 4h6l2-4M3 22h18"/></svg></button>
+              <button class="button icon-button" data-tool="pen" type="button" aria-pressed="false" disabled
+                title="ドラッグしてフリーハンドで描く" aria-label="ペン"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 1-5L17 3l4 4L9 19zm11-15 4 4"/></svg></button>
+              <button class="button icon-button" data-tool="line" type="button" aria-pressed="false" disabled
+                title="ドラッグして直線を描く" aria-label="直線・矢印"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 19 5M4 18h2v2H4zM18 4h2v2h-2z"/></svg></button>
+              <button class="button icon-button" data-tool="rect" type="button" aria-pressed="false" disabled
+                title="ドラッグして矩形を描く" aria-label="矩形"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/></svg></button>
+              <button class="button icon-button" data-tool="text" type="button" aria-pressed="false" disabled
+                title="クリックしてテキストを追加" aria-label="テキスト"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7V4h14v3M12 4v16m-4 0h8"/></svg></button>
+              <button class="button icon-button" data-tool="note" type="button" aria-pressed="false" disabled
+                title="クリックして付箋を追加" aria-label="付箋"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v11l-5 5H4zm11 16v-5h5"/></svg></button>
+            </div>
+            <div class="annotation-selection-actions" role="group" aria-label="このページの書き込みの選択と削除">
+              <span class="count" id="mark-selection-count" aria-live="polite">選択 0</span>
+              <button class="button icon-button" id="mark-multiselect" type="button" aria-label="オブジェクトを追加選択"
+                aria-pressed="false" title="複数選択：タップまたは Ctrl／⌘＋クリックで追加・解除" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h12v12H3zM9 9h12v12H9zM12 15h6m-3-3v6"/></svg></button>
+              <button class="button icon-button" id="mark-select-all" type="button"
+                aria-label="このページの書き込みをすべて選択" disabled title="このページの書き込みをすべて選択"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zm11 3 3 3 5-7"/></svg></button>
+              <button class="button icon-button" id="mark-copy" type="button" title="選択した書き込みをコピー（Ctrl / ⌘ + C）"
+                disabled aria-label="選択した書き込みをコピー"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM15 9V4H4v11h5"/></svg></button>
+              <button class="button icon-button" id="mark-paste" type="button"
+                title="このページに書き込みを貼り付け（Ctrl / ⌘ + V）" disabled aria-label="書き込みを貼り付け"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H5v16h14V5h-4M9 3h6v4H9zM9 12h6m-6 4h6"/></svg></button>
+              <button class="button icon-button danger" id="mark-remove" type="button" title="選択した書き込みを削除"
+                disabled aria-label="選択した書き込みを削除"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg></button>
+            </div>
+          </div>
+          <div class="annotation-settings" id="mark-settings" role="group" aria-label="書き込みの設定">
+            <div class="annotation-settings-group" id="mark-select-options" hidden>
+              <button class="button" id="mark-range-select" type="button" aria-pressed="false"
+                title="ドラッグした枠に重なる注釈を選択。Shift＋ドラッグで範囲内の選択を反転" disabled>範囲選択</button>
+            </div>
+            <div class="annotation-settings-group" id="mark-lock-options" hidden>
+              <label title="チェックを外すと選択した注釈の個別ロックをまとめて解除します"><input id="mark-locked" type="checkbox"> ロック</label>
+              <span class="muted" id="mark-lock-state" role="status"></span>
+            </div>
+            <div class="annotation-settings-group" id="alignment-options" role="group" aria-label="選択した書き込みの整列" hidden>
+              <button class="button icon-button" type="button" data-align="left" aria-label="左揃え" title="左揃え" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v18M8 6h12v4H8zM8 14h8v4H8z"/></svg></button>
+              <button class="button icon-button" type="button" data-align="center" aria-label="左右中央揃え" title="左右中央揃え" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4 6h16v4H4zM7 14h10v4H7z"/></svg></button>
+              <button class="button icon-button" type="button" data-align="right" aria-label="右揃え" title="右揃え" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3v18M4 6h12v4H4zM8 14h8v4H8z"/></svg></button>
+              <button class="button icon-button" type="button" data-align="top" aria-label="上揃え" title="上揃え" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18M6 8h4v12H6zm8 0h4v8h-4z"/></svg></button>
+              <button class="button icon-button" type="button" data-align="middle" aria-label="上下中央揃え" title="上下中央揃え" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M6 4h4v16H6zm8 3h4v10h-4z"/></svg></button>
+              <button class="button icon-button" type="button" data-align="bottom" aria-label="下揃え" title="下揃え" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M6 4h4v12H6zm8 4h4v8h-4z"/></svg></button>
+              <button class="button icon-button" type="button" data-align="distribute-x"
+                aria-label="左右に等間隔（両端を固定し、中心間隔を揃える）" title="左右に等間隔（両端を固定し、中心間隔を揃える）" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3v18M22 3v18M5 8h3v8H5zm6-3h2v14h-2zm6 3h3v8h-3z"/></svg></button>
+              <button class="button icon-button" type="button" data-align="distribute-y"
+                aria-label="上下に等間隔（両端を固定し、中心間隔を揃える）" title="上下に等間隔（両端を固定し、中心間隔を揃える）" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2h18M3 22h18M8 5h8v3H8zM5 11h14v2H5zm3 6h8v3H8z"/></svg></button>
+            </div>
+            <div class="annotation-settings-group" id="external-options" hidden><span class="muted" title="四隅をドラッグして変形。Shiftを押すと縦横比を固定します。">外部の注釈 · 移動・変形・削除</span></div>
+            <div class="annotation-settings-group" id="highlight-options" role="group" aria-label="ハイライトの設定" hidden>
+              <label>色 <input id="highlight-color" type="color" value="#ffe34f"></label>
+              <label>透明度 <input id="highlight-transparency" type="number" min="0" max="100" step="1" value="45"
+                           aria-label="ハイライトの透明度（%）"> %</label>
+              <button class="button" id="apply-highlight" type="button" disabled>選択した文字に適用</button>
+              <span class="muted" id="highlight-message" role="status"></span>
+            </div>
+            <div class="annotation-settings-group" id="stroke-options" role="group" aria-labelledby="stroke-heading" hidden>
+              <label class="annotation-settings-heading"><input id="text-border-enabled" type="checkbox" checked hidden> <span id="stroke-heading">線</span></label>
+              <label>色 <input id="mark-color" type="color" value="#ff0000"></label>
+              <label>太さ <input id="mark-width" type="number" min="1" max="24" step="1" value="2"> pt</label>
+              <label>透明度 <input id="stroke-transparency" type="number" min="0" max="100" step="1" value="0" aria-label="線の透明度（%）"> %</label>
+              <label id="line-arrow-field" hidden><input id="line-arrow-enabled" type="checkbox"> 終点を矢印</label>
+            </div>
+            <div class="annotation-settings-group" id="fill-options" role="group" aria-labelledby="fill-heading" hidden>
+              <label class="annotation-settings-heading"><input id="text-fill-enabled" type="checkbox" checked hidden> <span id="fill-heading">塗り</span></label>
+              <label>色 <input id="mark-fill" type="color" value="#ffffff"></label>
+              <label id="fill-transparency-toggle"><input id="fill-transparency-enabled" type="checkbox"> 透明度</label>
+              <label id="fill-transparency-field"><input id="fill-transparency" type="number" min="0" max="100"
+                                                    step="1" value="70" aria-label="塗りの透明度" disabled> %</label>
+            </div>
+            <div class="annotation-settings-group" id="text-options" role="group" aria-labelledby="text-heading" hidden>
+              <span class="annotation-settings-heading" id="text-heading">文字</span>
+              <label id="text-color-field">色 <input id="text-color" type="color" value="#25304a"></label>
+              <label>サイズ <input id="mark-size" type="number" min="8" max="48" step="1" value="12"> pt</label>
+              <label><input id="mark-bold" type="checkbox"> 太字</label>
+              <button class="button" id="mark-edit" type="button" hidden>内容を編集</button>
+            </div>
+            <span class="annotation-settings-placeholder" aria-hidden="true">ツール・オブジェクトのプロパティ</span>
+          </div>
+        </div>
+        <div class="preview-stage" id="preview-stage" data-navigation="true" tabindex="0" aria-label="PDFのプレビュー。2本指で拡大縮小・移動。ページの移動・拡大縮小モードでは1本指・ドラッグで移動">
+          <!-- ページ画像・書き込み・テキスト選択の描画レイヤー -->
+          <div class="preview-sheet" id="preview-sheet" hidden>
+            <div class="preview-surface" id="preview-surface">
+              <div id="preview-shadows" aria-hidden="true"></div>
+              <div id="preview-companions"></div>
+              <div class="preview-page" id="preview-active-page" role="group" aria-label="編集中のページ">
+                <div id="preview-base"></div>
+                <canvas id="preview-highlights" class="preview-highlights" aria-hidden="true" hidden></canvas>
+                <canvas class="preview-overlay" id="preview-overlay" aria-hidden="true"></canvas>
+                <div class="preview-selection-box" id="preview-selection-box" aria-hidden="true" hidden></div>
+                <div class="preview-text-layer textLayer" id="preview-text-layer" hidden></div>
+              </div>
+            </div>
+          </div>
+          <p class="preview-message muted" id="preview-message">ページを選ぶと表示されます。</p>
+        </div>
+        <footer class="panel-footer" id="preview-footer" hidden>
+          <span class="preview-meta muted" id="preview-meta"></span>
+        </footer>
+      </section>
+    </div>
+  </main>
+
+  <aside class="editor-toast" id="editor-toast" aria-label="通知" hidden>
+    <div class="toast-heading">
+      <strong id="toast-title"></strong>
+      <button class="button" id="dismiss-toast" type="button" aria-label="通知を閉じる" title="通知を閉じる">×</button>
+    </div>
+    <p id="toast-message" class="toast-message" tabindex="0"></p>
+  </aside>
+  <div class="toast-live" id="toast-live" role="status"></div>
+
+  <!-- 元ファイル情報と編集用ダイアログ -->
+  <dialog class="document-properties" id="source-properties-dialog" aria-labelledby="source-properties-title">
+    <header class="properties-heading">
+      <h2 id="source-properties-title">元PDFのプロパティ</h2>
+      <span class="count" id="source-properties-count"></span>
+    </header>
+    <div id="source-properties-content" class="properties-scroll" tabindex="0" role="region" aria-label="元ファイル情報の表。上下・左右にスクロールできます"></div>
+    <div class="dialog-actions">
+      <button class="button" id="source-properties-close" type="button">閉じる</button>
+    </div>
+  </dialog>
+  <dialog class="editor-dialog" id="source-password-dialog" aria-labelledby="source-password-title">
+    <form method="dialog" id="source-password-form">
+      <h2 id="source-password-title">PDFのパスワード</h2>
+      <p id="source-password-message"></p>
+      <label>パスワード <input id="source-password" type="password" autocomplete="off"></label>
+      <div class="dialog-actions">
+        <button class="button" id="source-password-cancel" type="button">キャンセル</button>
+        <button class="button primary" value="open" type="submit">開く</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="editor-dialog" id="mark-dialog" aria-labelledby="mark-dialog-title">
+    <form method="dialog">
+      <h2 id="mark-dialog-title">テキストを追加</h2>
+      <textarea id="mark-text" maxlength="600" aria-label="書き込みの内容" required></textarea>
+      <div class="dialog-actions">
+        <button class="button" type="submit" value="cancel" formnovalidate>キャンセル</button>
+        <button class="button primary" type="submit" value="save">反映する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./js/editor.mjs"></script>
+</body>
+</html>

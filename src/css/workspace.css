@@ -1,0 +1,471 @@
+/* 作業領域と仕切り */
+main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.workspace {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  --separator-width: 12px;
+  grid-template-columns: minmax(0, var(--list-width, calc((100% - var(--separator-width)) / 2))) var(--separator-width) minmax(0, 1fr);
+  padding: 10px var(--gutter);
+}
+.pane-separator {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+  border-radius: 6px;
+}
+.pane-separator::before {
+  content: "";
+  position: absolute;
+  background: #a9b9d1;
+  width: 4px;
+  height: 42px;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 4px;
+}
+.pane-separator:focus-visible {
+  outline: none;
+}
+.pane-separator:hover::before, .pane-separator:focus-visible::before {
+  background: var(--accent);
+}
+
+/* 共通のパネル */
+.panel {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  min-width: 0;
+  overflow: clip;
+}
+.panel-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--panel-actions-height);
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--line);
+  overflow: auto hidden;
+  scrollbar-width: thin;
+  white-space: nowrap;
+}
+.panel-toolbar > * {
+  flex-shrink: 0;
+}
+.panel-header {
+  height: var(--panel-header-height);
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+
+.panel-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 7px 10px;
+}
+
+.pages-panel, .preview-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--line);
+  min-height: 31px;
+  flex-shrink: 0;
+}
+
+/* ページ一覧の操作バー */
+.panel-toolbar > .pages-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0;
+}
+.pages-heading h2 {
+  flex: none;
+}
+.page-import-progress {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  margin-inline-start: 8px;
+  color: var(--muted);
+  font-size: .8125rem;
+}
+#page-import-filename {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.page-selection-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.page-selection-actions .button {
+  padding-inline: 7px;
+  white-space: nowrap;
+}
+.thumbnail-control {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.page-edit-actions .thumbnail-control {
+  margin-left: auto;
+}
+.thumbnail-control select {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--white);
+}
+
+.page-edit-actions .button {
+  padding-inline: 9px;
+}
+
+.page-action-separator {
+  flex: none;
+  height: 24px;
+  border-left: 1px solid var(--line);
+  margin-inline: 6px;
+}
+
+.pages-panel {
+  container: page-list / inline-size;
+}
+@container page-list (max-width: 389px) {
+  .pages-panel > .panel-header, .page-edit-actions {
+    height: auto;
+    flex-wrap: wrap;
+    padding-inline: 8px;
+  }
+  .pages-panel > .panel-header {
+    min-height: var(--panel-header-height);
+    gap: 4px 6px;
+  }
+  .page-edit-actions {
+    min-height: var(--panel-actions-height);
+    gap: 4px 3px;
+  }
+  .page-edit-actions .page-action-separator {
+    margin-inline: 0;
+  }
+  .page-edit-actions .thumbnail-control {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}
+
+@container page-list (max-width: 389px) {
+  /* 幅が狭いときは、読み込み中に無効になる選択操作の場所を使う。 */
+  .panel-toolbar > .pages-heading {
+    position: relative;
+    flex: none;
+  }
+  .page-import-progress {
+    position: absolute;
+    inset-inline-start: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    max-width: max(0px, calc(100cqw - 100% - 24px));
+  }
+  .panel-header:has(#page-import-count:not(:empty)) .page-selection-actions {
+    visibility: hidden;
+  }
+}
+
+/* 空のページ一覧とファイルのドロップ */
+.page-area {
+  flex: 1;
+  min-height: 0;
+  padding: 11px 9px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #f7f9fd;
+}
+.page-list-empty {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 28px 14px;
+  min-height: max(230px, 100%);
+  border: 1px dashed #aebdd4;
+  border-radius: 11px;
+  background: #f8faff;
+}
+.page-list-empty-icon {
+  position: relative;
+  width: 70px;
+  height: 68px;
+  margin: 0 0 12px;
+  transform: rotate(-6deg);
+}
+.page-list-empty-icon::before, .page-list-empty-icon::after, .page-list-empty-icon span {
+  content: "";
+  position: absolute;
+  width: 44px;
+  height: 59px;
+  border: 1px solid #a7b9db;
+  border-radius: 7px;
+  background: white;
+}
+.page-list-empty-icon::before {
+  top: 4px;
+  left: 26px;
+  transform: rotate(17deg);
+  background: #dfe9ff;
+}
+.page-list-empty-icon::after {
+  top: 2px;
+  left: 16px;
+  transform: rotate(6deg);
+  background: #edf3ff;
+}
+.page-list-empty-icon span {
+  z-index: 1;
+  top: 5px;
+  left: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-dark);
+  font: 750 12px/1 "Inter", system-ui, sans-serif;
+  letter-spacing: .06em;
+  box-shadow: 0 5px 10px #21365b15;
+}
+.page-list-empty-title {
+  margin: 0;
+  font-size: clamp(18px, 2.5vw, 23px);
+  font-weight: 700;
+}
+.page-list-empty .button {
+  margin-top: 9px;
+  padding-inline: 20px;
+}
+body.file-over .page-area {
+  background: #e4edff;
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* ページカードとサムネイル */
+.page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--thumb-min-width, 146px)), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.page-card {
+  display: block;
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  padding: 8px;
+}
+.page-card.selected {
+  background: var(--chosen);
+  border-color: var(--accent);
+}
+.page-card.previewing {
+  box-shadow: inset 0 0 0 2px #4b78c9;
+}
+.page-card[data-drop="before"]::before, .page-card[data-drop="after"]::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--accent);
+  z-index: 2;
+}
+.page-card[data-drop="before"]::before {
+  left: -8px;
+}
+.page-card[data-drop="after"]::after {
+  right: -8px;
+}
+.page-pick {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  display: block;
+  text-align: left;
+}
+.page-thumbnail {
+  height: var(--thumb-height, 145px);
+  border-radius: 6px;
+  background: #e5ebf4;
+  display: grid;
+  grid-template: 100% / 100%;
+  place-items: center;
+  overflow: hidden;
+}
+.selected .page-thumbnail {
+  background: #dfe9fd;
+}
+.page-thumbnail img {
+  display: block;
+  max-width: min(100%, calc(var(--thumb-min-width, 146px) + 44px));
+  max-height: 100%;
+  box-shadow: 0 2px 8px #19274728;
+}
+.page-pick .page-number {
+  display: block;
+  min-height: 24px;
+  padding: 1px 30px 3px 2px;
+  line-height: 20px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.page-pick:focus-visible {
+  outline: none;
+}
+.page-pick:focus-visible .page-number {
+  text-decoration: underline 2px;
+  text-underline-offset: 3px;
+}
+.page-source {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 2px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.page-check {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  margin: 0;
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 1px 6px #1727431a;
+}
+.page-thumbnail-message {
+  font-size: 11px;
+  padding: 10px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* 注意とエラーの通知。作業領域のレイアウトには参加しない。 */
+.editor-toast {
+  position: fixed;
+  z-index: 4;
+  pointer-events: none;
+  inset-inline-end: calc(12px + env(safe-area-inset-right));
+  inset-block-end: calc(12px + env(safe-area-inset-bottom));
+  inline-size: min(22rem, calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  border: 1px solid #dcc276;
+  border-radius: 10px;
+  background: #fff9e9;
+  color: #5f4811;
+  box-shadow: 0 4px 18px #17274329;
+  padding: 8px 12px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.editor-toast.error {
+  border-color: #e8bac2;
+  background: #fff1f2;
+  color: #7f2534;
+}
+.toast-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.toast-heading .button {
+  pointer-events: auto;
+  min-width: 36px;
+  min-height: 32px;
+  padding: 0;
+  font-size: 21px;
+}
+.toast-message {
+  pointer-events: auto;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  max-block-size: min(13rem, 25dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.toast-live {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 作業領域の画面幅と高さ */
+@media (min-width: 761px) and (min-height: 500px) {
+  body {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .workspace {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 761px) and (max-height: 499px) {
+  .page-area {
+    height: 340px;
+    flex: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .pane-separator {
+    display: none;
+  }
+  .page-area {
+    max-height: clamp(220px, 42dvh, 490px);
+  }
+  .page-list-empty {
+    min-height: 230px;
+  }
+  .page-check {
+    width: 25px;
+    height: 25px;
+  }
+}

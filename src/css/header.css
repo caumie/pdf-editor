@@ -1,0 +1,324 @@
+/* ヘッダーと文書操作 */
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #142341;
+  color: var(--white);
+}
+.masthead-inner {
+  padding: 9px var(--gutter);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px 16px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: var(--control-height);
+}
+.brand-mark {
+  width: var(--control-height);
+  height: var(--control-height);
+  flex: none;
+}
+.brand h1 {
+  font-size: calc(var(--control-height) * .67);
+  line-height: 1;
+  letter-spacing: .025em;
+  white-space: nowrap;
+}
+
+.document-actions, .header-output {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.document-actions {
+  flex-wrap: wrap;
+}
+.header-action-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline-start: 10px;
+}
+.header-action-group::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 2px;
+  width: 1px;
+  height: 24px;
+  background: #ffffff50;
+}
+.header-output {
+  position: relative;
+  margin-left: auto;
+}
+.settings-actions {
+  display: flex;
+}
+#settings-menu-toggle[aria-expanded="true"] {
+  color: var(--accent-dark);
+  border-color: #7396df;
+  background: var(--chosen);
+}
+
+.header-output > .button, .document-actions .button {
+  white-space: nowrap;
+}
+
+.document-actions .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.document-actions .tool-icon {
+  flex: none;
+  margin: 0;
+  vertical-align: middle;
+}
+
+/* 進捗でボタンの幅が変わり、ヘッダーが折り返さないようにする。 */
+.operation-label {
+  display: inline-grid;
+}
+.operation-label > span, .operation-label::before, .operation-label::after {
+  grid-area: 1 / 1;
+}
+.operation-label::before {
+  content: attr(data-idle);
+  visibility: hidden;
+}
+.operation-label::after {
+  content: attr(data-working);
+  visibility: hidden;
+}
+
+/* ダウンロードボタン */
+#export-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+#export-menu-toggle:not(:disabled) {
+  border-color: #e4edff;
+  box-shadow: inset 0 0 0 1px #ffffff26, 0 1px 3px #08182f33;
+}
+.export-indicator {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+}
+#export-menu-arrow {
+  display: inline-flex;
+  align-items: center;
+}
+#export-menu-toggle .tool-icon {
+  flex: none;
+  margin: 0;
+  vertical-align: middle;
+}
+
+.export-spinner {
+  display: inline-block;
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  flex: none;
+  vertical-align: -2px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  will-change: transform;
+  animation: export-spin .8s linear infinite;
+}
+@keyframes export-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .export-spinner {
+    animation: none;
+  }
+}
+
+/* ダウンロード・設定メニュー */
+.export-form, .settings-menu {
+  position: absolute;
+  inset: calc(100% + 8px) 0 auto auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: 0 12px 36px #10234740;
+}
+.export-form {
+  width: min(460px, calc(100vw - 2 * var(--gutter)));
+  max-height: min(82dvh, calc(100dvh - 100px));
+  overflow: auto;
+  padding: 12px;
+}
+
+.settings-menu {
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--gutter));
+  padding: 5px;
+}
+.settings-version {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.settings-menu .button {
+  width: 100%;
+  border-color: transparent;
+  text-align: start;
+}
+.export-fields {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 10px;
+  margin-block: 10px;
+  font-size: 13px;
+}
+.export-fields select, .export-fields input[type="text"] {
+  min-width: 0;
+  min-height: var(--control-height);
+  padding: 5px 8px;
+  border: 1px solid #b7c4d8;
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--white);
+}
+.export-fields :disabled {
+  opacity: .48;
+}
+.export-fields input[readonly] {
+  background: var(--paper);
+  color: var(--muted);
+}
+.export-buttons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  position: sticky;
+  bottom: -12px;
+  background: var(--white);
+  padding: 10px 0 2px;
+  z-index: 1;
+  flex-wrap: wrap;
+}
+.export-buttons .count {
+  margin-right: auto;
+}
+
+.export-form h2 {
+  font-size: 15px;
+}
+
+.export-fields textarea {
+  resize: vertical;
+}
+.settings-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 8px 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+#pdf-output-settings > .export-details {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.export-details {
+  font-size: 13px;
+  margin-block: 6px;
+}
+.export-details summary {
+  cursor: pointer;
+  min-height: 28px;
+  display: list-item;
+  align-content: center;
+  color: var(--muted);
+}
+.export-details[open] {
+  padding-bottom: 4px;
+}
+.export-details[open] summary {
+  color: var(--ink);
+}
+.permission-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px 10px;
+  padding-block: 6px;
+  font-size: 12px;
+}
+.permission-grid label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.permission-grid input {
+  flex: none;
+}
+.password-settings {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.password-settings label {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: 4px;
+}
+.password-settings input[type="password"] {
+  min-height: var(--control-height);
+}
+.password-settings input:disabled {
+  background: var(--paper);
+  opacity: .6;
+}
+
+/* ヘッダーと書き出しの狭幅表示 */
+@media (max-width: 580px) {
+  .masthead-inner {
+    gap: 7px;
+  }
+  .document-actions {
+    order: 1;
+    flex-basis: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .export-fields {
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 6px;
+  }
+  .password-settings {
+    gap: 5px;
+    font-size: 11px;
+  }
+}
+
+/* 高さが限られる画面では、スクロールでヘッダーを画面外へ送れる。 */
+@media (max-height: 360px) {
+  .masthead { position: relative; }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "pdf-editor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Offline PDF editor and static build",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "0.1.100",
+    "@playwright/test": "1.62.0"
+  },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "build:check": "node tools/build.mjs --check",
+    "test": "npm run build:check && npm run test:unit",
+    "test:unit": "node --test tests/js/*.test.mjs",
+    "test:browser": "npm run build:check && playwright test",
+    "package": "npm run build && node tools/package.mjs"
+  }
+}

@@ -1,0 +1,6 @@
+node_modules
+build-output
+test-results
+playwright-report
+artifacts
+.git
