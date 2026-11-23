@@ -6,7 +6,7 @@ import { sourceImageFormat } from "./image-import.mjs";
 import { readSourcePdfProperties, validatePdfOutputSettings } from "./pdf-properties.mjs";
 import { openExternalAnnotationRenderer } from "./external-annotations.mjs";
 import { duplicatePdfFormWarning, unsupportedPdfWarning } from "./pdf-feature-policy.mjs";
-import { JpegExportError } from "./jpeg-export.mjs";
+import { ImageExportError } from "./image-export.mjs";
 
 export function createEditorFiles({
   annotationEditor,
@@ -228,7 +228,7 @@ export function createEditorFiles({
   }
 
   function showExportError(error) {
-    const detail = error instanceof ExportSourceError || error instanceof JpegExportError
+    const detail = error instanceof ExportSourceError || error instanceof ImageExportError
       ? "\n" + error.message : "";
     showStatus("書き出しに失敗しました。" + detail + "\n編集内容は画面に残っています。", { error: true });
     console.error(error);

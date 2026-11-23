@@ -3,17 +3,19 @@ import { defaultExportName, exportTargetPages, sameExportPlan } from "./export-j
 // ダウンロード欄の表示と、前回の書き出し設定・ファイルを保持する。
 // ページ・選択・元PDFは、必要なときに呼び出し元から読み取る。
 export function createDownloadPanel(ui, properties, context, onSubmit) {
-  const layouts = { pdf: "combined", jpg: "zip" };
+  let pdfLayout = "combined";
   const form = ui["export-form"];
+  const quality = ui["jpeg-quality"];
   let latestDownload = null;
 
   function options() {
     const extension = ui["export-format"].value;
     return {
-      extension, layout: layouts[extension],
+      extension, layout: extension === "pdf" ? pdfLayout : "zip",
       selectionOnly: ui["export-scope"].value === "selected",
       customName: ui["output-name"].value,
-      jpegDpi: Number(ui["jpeg-dpi"].value),
+      imageDpi: Number(ui["image-dpi"].value),
+      jpegQuality: Number(quality.value),
       pdfSettings: properties.settings(),
     };
   }
@@ -22,14 +24,17 @@ export function createDownloadPanel(ui, properties, context, onSubmit) {
     const { pages, selectedIds, sources, available } = context();
     const disabled = !available || !pages.length;
     const { extension, layout, selectionOnly } = options();
+    const image = extension !== "pdf";
     const jpeg = extension === "jpg";
     const layoutInput = ui["export-layout"];
-    layoutInput.options[0].disabled = layoutInput.options[0].hidden = jpeg;
+    layoutInput.options[0].disabled = layoutInput.options[0].hidden = image;
     layoutInput.value = layout;
     ui["export-menu-toggle"].disabled = disabled;
     for (const id of ["output-name", "export-format", "export-scope", "export-layout"]) ui[id].disabled = disabled;
-    ui["jpeg-dpi"].disabled = disabled || !jpeg;
-    ui["jpeg-dpi"].hidden = ui["jpeg-dpi-label"].hidden = !jpeg;
+    ui["image-dpi"].disabled = disabled || !image;
+    ui["image-dpi"].hidden = ui["image-dpi-label"].hidden = !image;
+    quality.disabled = disabled || !jpeg;
+    ui["jpeg-quality-field"].hidden = ui["jpeg-quality-label"].hidden = !jpeg;
     const targets = exportTargetPages(pages, selectedIds, selectionOnly);
     const count = targets.length;
     const exportCount = "書き出し対象 " + count + "ページ";
@@ -87,14 +92,22 @@ export function createDownloadPanel(ui, properties, context, onSubmit) {
     ui["output-name"].value = "";
     ui["export-scope"].value = "all";
     ui["export-format"].value = "pdf";
-    ui["export-layout"].value = layouts.pdf = "combined";
-    ui["jpeg-dpi"].value = "150";
-    layouts.jpg = "zip";
+    ui["export-layout"].value = pdfLayout = "combined";
+    ui["image-dpi"].value = "150";
+    quality.value = quality.defaultValue;
+    updateQualityLabel();
   }
 
+  function updateQualityLabel() {
+    const label = quality.value + "%";
+    ui["jpeg-quality-value"].textContent = label;
+    quality.setAttribute("aria-valuetext", label);
+  }
+
+  quality.addEventListener("input", updateQualityLabel);
   ui["export-menu-toggle"].addEventListener("click", () => setOpen(form.hidden, true));
   form.addEventListener("change", event => {
-    if (event.target === ui["export-layout"]) layouts[ui["export-format"].value] = event.target.value;
+    if (event.target === ui["export-layout"] && ui["export-format"].value === "pdf") pdfLayout = event.target.value;
     update();
   });
   form.addEventListener("submit", onSubmit);

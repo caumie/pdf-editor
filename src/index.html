@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self'; font-src blob: data:; img-src 'self' blob: data:; base-uri 'none'; form-action 'none'">
   <title>PDF編集</title>
-  <link rel="icon" type="image/svg+xml" href="./pdf-editor.svg">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="./pdf-editor.svg">
   <link rel="stylesheet" href="./css/base.css">
   <link rel="stylesheet" href="./css/header.css">
   <link rel="stylesheet" href="./css/workspace.css">
@@ -47,18 +47,24 @@
             <select id="export-format">
               <option value="pdf">PDF</option>
               <option value="jpg">JPEG</option>
+              <option value="png">PNG</option>
             </select>
             <label for="export-layout">ダウンロード方法</label>
             <select id="export-layout">
               <option value="combined">1つのPDFにまとめる</option>
               <option value="zip">ページ別ファイルをZIPで保存</option>
             </select>
-            <label for="jpeg-dpi" id="jpeg-dpi-label" hidden>JPEG解像度</label>
-            <select id="jpeg-dpi" disabled hidden>
+            <label for="image-dpi" id="image-dpi-label" hidden>画像の解像度</label>
+            <select id="image-dpi" disabled hidden>
               <option value="150" selected>150 DPI</option>
               <option value="300">300 DPI</option>
               <option value="600">600 DPI</option>
             </select>
+            <label for="jpeg-quality" id="jpeg-quality-label" hidden>JPEG画質</label>
+            <div class="jpeg-quality-field" id="jpeg-quality-field" hidden>
+              <input id="jpeg-quality" type="range" min="0" max="100" step="1" value="92" aria-valuetext="92%" disabled>
+              <span id="jpeg-quality-value" aria-hidden="true">92%</span>
+            </div>
             <label for="output-name">ファイル名</label>
             <input id="output-name" type="text" maxlength="100" autocomplete="off" spellcheck="false" placeholder="編集済み_edit.pdf">
           </div>

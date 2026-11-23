@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
+import { crc32 } from "node:zlib";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { createPdfExporter } from "../../src/js/pdf-export.mjs";
-import { createExportPlan, createExportRunner } from "../../src/js/export-job.mjs";
-import { exportPageJpeg, JpegExportError } from "../../src/js/jpeg-export.mjs";
+import { createExportPlan, createExportRunner, sameExportPlan } from "../../src/js/export-job.mjs";
+import { exportPageImage, ImageExportError } from "../../src/js/image-export.mjs";
 
 const require = createRequire(import.meta.url);
 const pdfLib = require("../../src/vendor/cantoo-pdf-lib/pdf-lib.min.js");
@@ -20,7 +22,7 @@ test("結合PDF・ページ別ZIPの書き出しは、対象・順序・回転�
   const runner = createExportRunner(createPdfExporter(pdfLib), fflate);
   for (const layout of ["combined", "zip"]) {
     const files = [], progress = [];
-    const plan = createExportPlan(pages, new Set(["p1"]), sources, { extension: "pdf", layout, customName: "試作.pdf", jpegDpi: 150 });
+    const plan = createExportPlan(pages, new Set(["p1"]), sources, { extension: "pdf", layout, customName: "試作.pdf" });
     await runner(plan, { report: value => progress.push(value), download: (blob, name) => files.push({ blob, name }) });
     assert(progress.length > 0);
     let outputs;
@@ -126,13 +128,13 @@ test("JPEGは表示倍率から独立したDPIと画素数で出力し、処理�
     const dimensions = [];
     const sourcePage = { rotate: 0, getViewport({ scale }) { return { width: 144 * scale, height: 216 * scale, scale, userUnit: 1, transform: [scale, 0, 0, -scale, 0, 216 * scale] }; },
       render({ canvas }) { dimensions.push([canvas.width, canvas.height]); return { promise: Promise.resolve() }; } };
-    const jpeg = await exportPageJpeg(sourcePage, { addedRotation: 0, annotations: [] }, dpi);
+    const jpeg = await exportPageImage(sourcePage, { addedRotation: 0, annotations: [] }, { extension: "jpg", dpi });
     assert.deepEqual(dimensions, [[Math.ceil(144 * (dpi / 72)), Math.ceil(216 * (dpi / 72))]]);
     const bytes = new Uint8Array(await jpeg.arrayBuffer()); const data = new DataView(bytes.buffer);
     assert.equal(bytes[13], 1); assert.equal(data.getUint16(14), dpi); assert.equal(data.getUint16(16), dpi);
     assert.equal(canvases.at(-1).width, 0); assert.equal(canvases.at(-1).height, 0);
   }
-  await assert.rejects(() => exportPageJpeg({ rotate: 0, getViewport: () => ({ width: 20000, height: 20000 }) }, { addedRotation: 0 }, 600), JpegExportError);
+  await assert.rejects(() => exportPageImage({ rotate: 0, getViewport: () => ({ width: 20000, height: 20000 }) }, { addedRotation: 0 }, { extension: "jpg", dpi: 600 }), ImageExportError);
 });
 
 test("ページ別PDFは1枚でも100枚でもZIPを1回だけ保存し、全ページを連番で収録する", async () => {
@@ -153,7 +155,10 @@ test("ページ別PDFは1枚でも100枚でもZIPを1回だけ保存し、全ペ
   }
 });
 test("JPEGは1枚でも複数枚でもZIPへまとめ、解像度とページ順を維持する", async () => {
-  globalThis.document = { createElement: () => ({ style: {}, setAttribute() {}, toBlob(callback) {
+  const qualities = [];
+  globalThis.document = { createElement: () => ({ style: {}, setAttribute() {}, toBlob(callback, type, quality) {
+    assert.equal(type, "image/jpeg");
+    qualities.push(quality);
     callback(new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: "image/jpeg" }));
   } }) };
   for (const count of [1, 3]) {
@@ -164,8 +169,10 @@ test("JPEGは1枚でも複数枚でもZIPへまとめ、解像度とページ順
         render: () => ({ promise: Promise.resolve() }) };
     } };
     const pages = Array.from({ length: count }, (_, index) => ({ id: index, sourcePdfId: 1, sourceIndex: count - index - 1, addedRotation: 0, annotations: [] }));
-    const plan = createExportPlan(pages, new Set(), new Map([[1, { reader }]]), { extension: "jpg", layout: "combined", customName: "images", jpegDpi: 300 });
+    const jpegQuality = count === 1 ? 0 : 100;
+    const plan = createExportPlan(pages, new Set(), new Map([[1, { reader }]]), { extension: "jpg", layout: "combined", customName: "images", imageDpi: 300, jpegQuality });
     assert.equal(plan.layout, "zip");
+    assert.equal(sameExportPlan(plan, { ...plan, jpegQuality: 92 }), false);
     await createExportRunner({}, fflate)(plan, { report() {}, download: (blob, name) => files.push({ blob, name }) });
     assert.equal(files.length, 1); assert.equal(files[0].name, "images.zip");
     const entries = fflate.unzipSync(new Uint8Array(await files[0].blob.arrayBuffer()));
@@ -173,4 +180,52 @@ test("JPEGは1枚でも複数枚でもZIPへまとめ、解像度とページ順
     assert.deepEqual(loaded, pages.map(page => page.sourceIndex + 1));
     for (const bytes of Object.values(entries)) { assert.equal(bytes[13], 1); assert.equal(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(14), 300); }
   }
+  assert.deepEqual(qualities, [0, 1, 1, 1]);
+});
+
+test("PNGは描画済みの画素を保ち、指定DPIを記録してZIPに格納する", async () => {
+  globalThis.document = { createElement() {
+    return { style: {}, setAttribute() {}, toBlob(callback, type, quality) {
+      assert.equal(type, "image/png");
+      assert.equal(quality, undefined);
+      callback(new Blob([this.image.toBuffer("image/png")], { type }));
+    } };
+  } };
+  const reader = { async getPage() {
+    return {
+      rotate: 0,
+      getViewport: ({ scale }) => ({ width: 72 * scale, height: 36 * scale, transform: [scale, 0, 0, -scale, 0, 36 * scale] }),
+      render({ canvas, background }) {
+        assert.equal(background, "#ffffff");
+        canvas.image = createCanvas(canvas.width, canvas.height);
+        const ctx = canvas.image.getContext("2d");
+        ctx.fillStyle = "#3180cc";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        return { promise: Promise.resolve() };
+      },
+    };
+  } };
+  const page = { id: 1, sourcePdfId: 1, sourceIndex: 0, addedRotation: 0, annotations: [] };
+  const plan = createExportPlan([page], new Set(), new Map([[1, { reader }]]),
+    { extension: "png", layout: "combined", customName: "sample.png", imageDpi: 300, jpegQuality: 0 });
+  assert.equal(sameExportPlan(plan, { ...plan, jpegQuality: 100 }), true);
+  assert.equal(sameExportPlan(plan, { ...plan, dpi: 150 }), false);
+  const downloads = [];
+  await createExportRunner({}, fflate)(plan, { download: (blob, name) => downloads.push({ blob, name }) });
+  assert.deepEqual(downloads.map(file => file.name), ["sample.zip"]);
+  const entries = fflate.unzipSync(new Uint8Array(await downloads[0].blob.arrayBuffer()));
+  assert.deepEqual(Object.keys(entries), ["sample_01.png"]);
+  const png = Buffer.from(entries["sample_01.png"]);
+  const density = png.indexOf("pHYs");
+  assert(density > 0 && density < png.indexOf("IDAT"));
+  assert.equal(png.readUInt32BE(density - 4), 9);
+  assert.equal(png.readUInt32BE(density + 4), 11811);
+  assert.equal(png.readUInt32BE(density + 8), 11811);
+  assert.equal(png[density + 12], 1);
+  assert.equal(png.readUInt32BE(density + 13), crc32(png.subarray(density, density + 13)));
+  const image = await loadImage(png);
+  assert.deepEqual([image.width, image.height], [300, 150]);
+  const decoded = createCanvas(image.width, image.height).getContext("2d");
+  decoded.drawImage(image, 0, 0);
+  assert.deepEqual([...decoded.getImageData(100, 100, 1, 1).data], [49, 128, 204, 255]);
 });

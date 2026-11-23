@@ -1,5 +1,5 @@
 import { ExportSourceError } from "./pdf-export.mjs";
-import { exportPageJpeg, JpegExportError } from "./jpeg-export.mjs";
+import { exportPageImage, ImageExportError } from "./image-export.mjs";
 
 function cleanExportStem(value) {
   const stem = value.trim()
@@ -36,8 +36,9 @@ export function createExportPlan(pages, selectedIds, sources, options) {
     sources: inputs,
     name: cleanExportStem(options.customName) || defaultExportName(output, sources),
     extension: options.extension,
-    layout: options.extension === "jpg" || options.layout !== "combined" ? "zip" : "combined",
-    dpi: options.jpegDpi,
+    layout: options.extension === "pdf" && options.layout === "combined" ? "combined" : "zip",
+    dpi: options.imageDpi,
+    jpegQuality: options.jpegQuality,
     pdfSettings: options.pdfSettings ? structuredClone(options.pdfSettings) : undefined,
   };
 }
@@ -49,8 +50,9 @@ function exportResultFilename(plan) {
 export function sameExportPlan(previous, next) {
   if (previous.name !== next.name || previous.layout !== next.layout || previous.extension !== next.extension
       || previous.pages.length !== next.pages.length || previous.sources.size !== next.sources.size) return false;
-  if (next.extension === "jpg" ? previous.dpi !== next.dpi
-    : JSON.stringify(previous.pdfSettings) !== JSON.stringify(next.pdfSettings)) return false;
+  if (next.extension === "pdf" ? JSON.stringify(previous.pdfSettings) !== JSON.stringify(next.pdfSettings)
+    : previous.dpi !== next.dpi) return false;
+  if (next.extension === "jpg" && previous.jpegQuality !== next.jpegQuality) return false;
   return previous.pages.every((page, index) => page === next.pages[index])
     && [...previous.sources].every(([id, source]) => next.sources.get(id) === source);
 }
@@ -73,10 +75,10 @@ async function createPageArchive(fflate, plan, createFile, report) {
     try {
       blob = await createFile([page]);
     } catch (error) {
-      const detail = error instanceof JpegExportError || error instanceof ExportSourceError ? "\n" + error.message : "";
+      const detail = error instanceof ImageExportError || error instanceof ExportSourceError ? "\n" + error.message : "";
       throw new ExportSourceError("「" + exportPageName(plan, index) + "」を作成できませんでした。" + detail, { cause: error });
     }
-    // PDFとJPEGはすでに圧縮されているため、ZIPにそのまま格納する。
+    // PDF、JPEG、PNGはZIPにそのまま格納する。
     const entry = new fflate.ZipPassThrough(exportPageName(plan, index));
     archive.add(entry);
     entry.push(new Uint8Array(await blob.arrayBuffer()), true);
@@ -90,14 +92,14 @@ export function createExportRunner(pdfExporter, fflate) {
   return async function runExportPlan(plan, output) {
     const { pages, sources, layout, extension, dpi } = plan;
     const report = output.report ?? (() => {});
-    const jpeg = extension === "jpg";
-    const inputPdfs = jpeg ? null : await pdfExporter.loadExportSourcePdfs(sources);
-    const createFile = jpeg
+    const image = extension !== "pdf";
+    const inputPdfs = image ? null : await pdfExporter.loadExportSourcePdfs(sources);
+    const createFile = image
       ? async ([page]) => {
         const source = sources.get(page.sourcePdfId);
         await source.externalRenderer?.prepare(page.annotations, dpi / 72);
         const sourcePage = await source.reader.getPage(page.sourceIndex + 1);
-        return exportPageJpeg(sourcePage, page, dpi);
+        return exportPageImage(sourcePage, page, plan);
       }
       : async outputPages => new Blob([await pdfExporter.assembleOutputPdf(outputPages, inputPdfs, plan.pdfSettings)], { type: "application/pdf" });
 

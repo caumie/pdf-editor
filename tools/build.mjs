@@ -92,7 +92,11 @@ function replaceOnce(html, marker, replacement) {
 let html = read("index.html");
 const iconPath = "./pdf-editor.svg";
 const iconUrl = "data:image/svg+xml;base64," + readFileSync(new URL(iconPath, src)).toString("base64");
-html = replaceOnce(html, `href="${iconPath}"`, `href="${iconUrl}"`);
+// Use a rasterized copy of the same SVG for the standalone file's tab icon.
+const tabIconUrl = "data:image/png;base64," + readFileSync(new URL("tools/pdf-editor-favicon.png", root)).toString("base64");
+html = replaceOnce(html,
+  `<link rel="icon" type="image/svg+xml" sizes="any" href="${iconPath}">`,
+  `<link rel="icon" type="image/png" sizes="32x32" href="${tabIconUrl}">`);
 html = replaceOnce(html, `src="${iconPath}"`, `src="${iconUrl}"`);
 html = html.replace(/<link rel="stylesheet" href="\.\/(css\/[\w-]+\.css)">/g, (_, file) => {
   const css = read(file).trim();

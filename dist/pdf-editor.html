@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob:; style-src 'unsafe-inline'; worker-src blob:; font-src blob: data:; img-src blob: data:; base-uri 'none'; form-action 'none'">
   <title>PDF編集</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3QgeD0iMC43NSIgeT0iMC43NSIgd2lkdGg9IjMwLjUiIGhlaWdodD0iMzAuNSIgcng9IjYiIGZpbGw9IiMyNDNkNzUiIHN0cm9rZT0iIzljYjhmZSIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KICA8cGF0aCBkPSJNNS41IDIwLjV2LTloMy4xYTIuNCAyLjQgMCAxIDEgMCA0LjhINS41CiAgICAgICAgICAgTTE0LjIgMTEuNWgyLjFhMy4zIDMuMyAwIDAgMSAzLjMgMy4zdjIuNGEzLjMgMy4zIDAgMCAxLTMuMyAzLjNoLTIuMXoKICAgICAgICAgICBNMjMgMjAuNXYtOWg0LjJNMjMgMTUuN2gzLjYiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+Cg==">
+  <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA7DAAAOwwHHb6hkAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAABDRJREFUWIXFl2tsFFUYhp9vZpbSVsS2VNCCQltoS6EYi9FQIykRloXIxUvCD0OiBE00greAGBUxhB9oFIiaIC1GEKMJmKYQul1KQEUiykW3rdnWulBoIWALldu2O5fjD90NS7trQ0t5/8zM+S7vM2cuJ0eUUkRUVkMBtrNEFDMVZImIi36QUsoUaFWCV1Paumdn0hCJSQSgzMcb4qjVpmUSbAroHR3tXMPWJ4nAHWkZZOfk2y7DANHeXORmbRSg3MsKRK2prztGja+SUOhq/zhfp+TkFGa451JQeB8gyxe5WSub9qgCsVRtff0xfVflN6j+uu04EhHmzF1AwfhJtqAVatjOEtMyqfFV3nRzAKUUvupKLMtCibNUw1GeYFNAv1nT3pNCoSsEgw267eDWELn7/IW2ATOP6Hz7X2jCKE1EXLZlDTiAZVmIiEsbcOfrdMsBjOsHht6ewpOeyejGv2xKQXNLGz/83ECo0wSgcFwWJQ+MBSActmkMnuHQr0Fs24n2mfpQPnk5I2J6t1+4zI7dhxMDLHjsQV5/3tONNHjyHM+8Vsbpsx288/I87p9wb0y8NtDCK6u20dzaDsAnqxeSNKhbew7/djya0yNApOhI7QmO+E8gAlMmj6VwXBbLX5jN0pXbGOTSAfjWe4SLl65SOmU8E/NH8vHqhTz+3AZM0472+Wzb/mjv5ta2GPMeASI6ePgPNny+B4DM9CEcrHibkuKxMTlbd/xIXUMLH27ysn3jS+Tn3MWjDxdStc8fzXl/4+54FkAvX8K0oakAdHaZPcZDnSYV1UcBmJg3MibmKS3CU1rEtJLxDE7qvrjGnQFPaRG5o4eTNMiguGgMAFX7/fHSuXQ5BMCQ25Jjxjesejp6/umWvXxUVt07gNzRw8kdPTx67fu+jnXlvrgA8RR5HI5S7D3we7d4XICqfX6q9vvpClsEmk5z+mxHQqPInUdmIqIlK79MWBcXoOnE2ZiXKZGSB7uY7y4GoLahpVc1/wvQG82fWczsaZOY8cgE7snKINB0hpoD9X0D6ApbMceeFDZtABY+URId8wdO8eqqrzD/iyWqTwjw9c5DdHaZVPiOxi16b10F7qkT0TWNCxevUBdo4Rf/8Zhf8YtvbbkxgL8vXuWL7QcSFtU3tlLf2Jow57ufAr0CuOWr4a0HUEqZutGnj+GGZBgGSilTE2hNTxs24ADpGZk4ilOaErzZufl2cnLqgJmnpKSSnZ1n6zpezRFtvcswmO6eg4jcdHMRYbpnntINl3Isbb2+c+u7bcf+lM7MO0dMT08fxsnm41hWz8tuX5WSksqsOU+pgvwiQWTZYg+7opvT8mqWoZw1lmURDDbobW3nCIe7+sU4KWkwGRmZjMnOcwzD5YgmKxbN4AO4ZncMsNlLnhJnqe3g1oRR/bk9dxSndB2vY2nrF8+iMRL7B8Lhr+AgFJTVAAAAAElFTkSuQmCC">
   <style>
 /* 色・寸法・基本要素 */
 :root {
@@ -374,6 +374,20 @@ button.button.icon-button[aria-pressed="true"] {
 }
 .export-fields :disabled {
   opacity: .48;
+}
+.jpeg-quality-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4ch;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.jpeg-quality-field input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
 }
 .export-fields input[readonly] {
   background: var(--paper);
@@ -1500,7 +1514,7 @@ body.file-over .page-area {
   <header class="masthead">
     <div class="masthead-inner">
       <div class="brand">
-        <img class="brand-mark" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3QgeD0iMC43NSIgeT0iMC43NSIgd2lkdGg9IjMwLjUiIGhlaWdodD0iMzAuNSIgcng9IjYiIGZpbGw9IiMyNDNkNzUiIHN0cm9rZT0iIzljYjhmZSIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KICA8cGF0aCBkPSJNNS41IDIwLjV2LTloMy4xYTIuNCAyLjQgMCAxIDEgMCA0LjhINS41CiAgICAgICAgICAgTTE0LjIgMTEuNWgyLjFhMy4zIDMuMyAwIDAgMSAzLjMgMy4zdjIuNGEzLjMgMy4zIDAgMCAxLTMuMyAzLjNoLTIuMXoKICAgICAgICAgICBNMjMgMjAuNXYtOWg0LjJNMjMgMTUuN2gzLjYiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+Cg==" alt="">
+        <img class="brand-mark" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4KICA8cmVjdCB4PSIwLjc1IiB5PSIwLjc1IiB3aWR0aD0iMzAuNSIgaGVpZ2h0PSIzMC41IiByeD0iNiIgZmlsbD0iIzI0M2Q3NSIgc3Ryb2tlPSIjOWNiOGZlIiBzdHJva2Utd2lkdGg9IjEuNSIvPgogIDxwYXRoIGQ9Ik01LjUgMjAuNXYtOWgzLjFhMi40IDIuNCAwIDEgMSAwIDQuOEg1LjUKICAgICAgICAgICBNMTQuMiAxMS41aDIuMWEzLjMgMy4zIDAgMCAxIDMuMyAzLjN2Mi40YTMuMyAzLjMgMCAwIDEtMy4zIDMuM2gtMi4xegogICAgICAgICAgIE0yMyAyMC41di05aDQuMk0yMyAxNS43aDMuNiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K" alt="">
         <h1>PDF編集</h1>
       </div>
       <div class="document-actions" role="group" aria-label="ファイルの追加・クリアと履歴">
@@ -1529,18 +1543,24 @@ body.file-over .page-area {
             <select id="export-format">
               <option value="pdf">PDF</option>
               <option value="jpg">JPEG</option>
+              <option value="png">PNG</option>
             </select>
             <label for="export-layout">ダウンロード方法</label>
             <select id="export-layout">
               <option value="combined">1つのPDFにまとめる</option>
               <option value="zip">ページ別ファイルをZIPで保存</option>
             </select>
-            <label for="jpeg-dpi" id="jpeg-dpi-label" hidden>JPEG解像度</label>
-            <select id="jpeg-dpi" disabled hidden>
+            <label for="image-dpi" id="image-dpi-label" hidden>画像の解像度</label>
+            <select id="image-dpi" disabled hidden>
               <option value="150" selected>150 DPI</option>
               <option value="300">300 DPI</option>
               <option value="600">600 DPI</option>
             </select>
+            <label for="jpeg-quality" id="jpeg-quality-label" hidden>JPEG画質</label>
+            <div class="jpeg-quality-field" id="jpeg-quality-field" hidden>
+              <input id="jpeg-quality" type="range" min="0" max="100" step="1" value="92" aria-valuetext="92%" disabled>
+              <span id="jpeg-quality-value" aria-hidden="true">92%</span>
+            </div>
             <label for="output-name">ファイル名</label>
             <input id="output-name" type="text" maxlength="100" autocomplete="off" spellcheck="false" placeholder="編集済み_edit.pdf">
           </div>
@@ -4840,26 +4860,28 @@ function renderPageCanvas(sourcePage, viewport, ratio, background, region) {
 return { openSourcePdf, renderPdfThumbnail, renderPdfPreviewPages, cappedRasterScale, previewPixelRatio, renderPdfPreviewRegion, renderPageCanvas };
 })();
 
-// src/js/jpeg-export.mjs
+// src/js/image-export.mjs
 const _pdfEditorModule26 = (() => {
 const { normalizeRotation, pdfViewportScale } = _pdfEditorModule17;
 const { drawAnnotationsOnCanvas } = _pdfEditorModule15;
 const { renderPageCanvas } = _pdfEditorModule25;
 
-const jpegQuality = 0.92;
-const maxJpegSide = 16_384;
-const maxJpegPixels = 80_000_000;
+const maxImageSide = 16_384;
+const maxImagePixels = 80_000_000;
 
-class JpegExportError extends Error {}
+class ImageExportError extends Error {}
 
-async function exportPageJpeg(sourcePage, page, dpi) {
+async function exportPageImage(sourcePage, page, { extension, dpi, jpegQuality = 92 }) {
+  const jpeg = extension === "jpg";
+  const mimeType = jpeg ? "image/jpeg" : "image/png";
+  const formatLabel = jpeg ? "JPEG" : "PNG";
   // PDFの1ポイントは1/72インチ。表示倍率や端末の画素密度から独立させる。
   const rotation = normalizeRotation(sourcePage.rotate + page.addedRotation);
   const viewport = sourcePage.getViewport({ scale: dpi / 72, rotation });
   const width = Math.ceil(viewport.width);
   const height = Math.ceil(viewport.height);
-  if (!(width > 0 && height > 0 && width <= maxJpegSide && height <= maxJpegSide && width * height <= maxJpegPixels)) {
-    throw new JpegExportError(dpi + " DPIでは " + width + " × " + height + " px になり、書き出し上限を超えます。DPIを下げてください。");
+  if (!(width > 0 && height > 0 && width <= maxImageSide && height <= maxImageSide && width * height <= maxImagePixels)) {
+    throw new ImageExportError(dpi + " DPIでは " + width + " × " + height + " px になり、書き出し上限を超えます。DPIを下げてください。");
   }
 
   let raster;
@@ -4868,22 +4890,18 @@ async function exportPageJpeg(sourcePage, page, dpi) {
     await raster.task.promise;
     const textScale = pdfViewportScale(viewport);
     drawAnnotationsOnCanvas(raster.canvas, viewport, page.annotations, null, textScale);
-    const jpeg = await encodeCanvasJpeg(raster.canvas);
-    return await writeJpegDensity(jpeg, dpi);
+    const image = await new Promise((resolve, reject) => {
+      raster.canvas.toBlob(blob => {
+        if (blob?.type === mimeType) resolve(blob);
+        else reject(new Error("ページを" + formatLabel + "に変換できませんでした。"));
+      }, mimeType, jpeg ? jpegQuality / 100 : undefined);
+    });
+    return await (jpeg ? writeJpegDensity(image, dpi) : writePngDensity(image, dpi));
   } catch (error) {
-    throw new JpegExportError(dpi + " DPIの画像を生成できませんでした。DPIを下げると書き出せる場合があります。", { cause: error });
+    throw new ImageExportError(formatLabel + "（" + dpi + " DPI）を生成できませんでした。DPIを下げると書き出せる場合があります。", { cause: error });
   } finally {
     if (raster) raster.canvas.width = raster.canvas.height = 0;
   }
-}
-
-function encodeCanvasJpeg(canvas) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(blob => {
-      if (blob?.type === "image/jpeg") resolve(blob);
-      else reject(new Error("ページをJPEGに変換できませんでした。"));
-    }, "image/jpeg", jpegQuality);
-  });
 }
 
 async function writeJpegDensity(jpeg, dpi) {
@@ -4906,13 +4924,45 @@ async function writeJpegDensity(jpeg, dpi) {
   return new Blob([jpeg.slice(0, 2), jfif, jpeg.slice(2)], { type: jpeg.type });
 }
 
-return { JpegExportError, exportPageJpeg };
+async function writePngDensity(png, dpi) {
+  // pHYsだけを更新し、圧縮済みの画素データはそのまま使う。
+  const density = new DataView(new ArrayBuffer(21));
+  density.setUint32(0, 9);
+  density.setUint32(4, 0x70485973); // pHYs
+  const pixelsPerMeter = Math.round(dpi / 0.0254);
+  density.setUint32(8, pixelsPerMeter);
+  density.setUint32(12, pixelsPerMeter);
+  density.setUint8(16, 1); // メートル
+  let crc = 0xffffffff;
+  for (let index = 4; index < 17; index++) {
+    crc ^= density.getUint8(index);
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  density.setUint32(17, crc ^ 0xffffffff);
+
+  // Canvasが記録した既定値を置き換える。既定値がなければ最初のIDATの手前に入れる。
+  for (let offset = 8; offset + 12 <= png.size;) {
+    const header = new DataView(await png.slice(offset, offset + 8).arrayBuffer());
+    const end = offset + header.getUint32(0) + 12;
+    if (end > png.size) break;
+    const type = header.getUint32(4);
+    if (type === 0x70485973 || type === 0x49444154) {
+      return new Blob([png.slice(0, offset), density.buffer, png.slice(type === 0x70485973 ? end : offset)], { type: png.type });
+    }
+    offset = end;
+  }
+  throw new Error("PNGの画像データを読み込めません。");
+}
+
+return { ImageExportError, exportPageImage };
 })();
 
 // src/js/export-job.mjs
 const _pdfEditorModule27 = (() => {
 const { ExportSourceError } = _pdfEditorModule23;
-const { exportPageJpeg, JpegExportError } = _pdfEditorModule26;
+const { exportPageImage, ImageExportError } = _pdfEditorModule26;
 
 function cleanExportStem(value) {
   const stem = value.trim()
@@ -4949,8 +4999,9 @@ function createExportPlan(pages, selectedIds, sources, options) {
     sources: inputs,
     name: cleanExportStem(options.customName) || defaultExportName(output, sources),
     extension: options.extension,
-    layout: options.extension === "jpg" || options.layout !== "combined" ? "zip" : "combined",
-    dpi: options.jpegDpi,
+    layout: options.extension === "pdf" && options.layout === "combined" ? "combined" : "zip",
+    dpi: options.imageDpi,
+    jpegQuality: options.jpegQuality,
     pdfSettings: options.pdfSettings ? structuredClone(options.pdfSettings) : undefined,
   };
 }
@@ -4962,8 +5013,9 @@ function exportResultFilename(plan) {
 function sameExportPlan(previous, next) {
   if (previous.name !== next.name || previous.layout !== next.layout || previous.extension !== next.extension
       || previous.pages.length !== next.pages.length || previous.sources.size !== next.sources.size) return false;
-  if (next.extension === "jpg" ? previous.dpi !== next.dpi
-    : JSON.stringify(previous.pdfSettings) !== JSON.stringify(next.pdfSettings)) return false;
+  if (next.extension === "pdf" ? JSON.stringify(previous.pdfSettings) !== JSON.stringify(next.pdfSettings)
+    : previous.dpi !== next.dpi) return false;
+  if (next.extension === "jpg" && previous.jpegQuality !== next.jpegQuality) return false;
   return previous.pages.every((page, index) => page === next.pages[index])
     && [...previous.sources].every(([id, source]) => next.sources.get(id) === source);
 }
@@ -4986,10 +5038,10 @@ async function createPageArchive(fflate, plan, createFile, report) {
     try {
       blob = await createFile([page]);
     } catch (error) {
-      const detail = error instanceof JpegExportError || error instanceof ExportSourceError ? "\n" + error.message : "";
+      const detail = error instanceof ImageExportError || error instanceof ExportSourceError ? "\n" + error.message : "";
       throw new ExportSourceError("「" + exportPageName(plan, index) + "」を作成できませんでした。" + detail, { cause: error });
     }
-    // PDFとJPEGはすでに圧縮されているため、ZIPにそのまま格納する。
+    // PDF、JPEG、PNGはZIPにそのまま格納する。
     const entry = new fflate.ZipPassThrough(exportPageName(plan, index));
     archive.add(entry);
     entry.push(new Uint8Array(await blob.arrayBuffer()), true);
@@ -5003,14 +5055,14 @@ function createExportRunner(pdfExporter, fflate) {
   return async function runExportPlan(plan, output) {
     const { pages, sources, layout, extension, dpi } = plan;
     const report = output.report ?? (() => {});
-    const jpeg = extension === "jpg";
-    const inputPdfs = jpeg ? null : await pdfExporter.loadExportSourcePdfs(sources);
-    const createFile = jpeg
+    const image = extension !== "pdf";
+    const inputPdfs = image ? null : await pdfExporter.loadExportSourcePdfs(sources);
+    const createFile = image
       ? async ([page]) => {
         const source = sources.get(page.sourcePdfId);
         await source.externalRenderer?.prepare(page.annotations, dpi / 72);
         const sourcePage = await source.reader.getPage(page.sourceIndex + 1);
-        return exportPageJpeg(sourcePage, page, dpi);
+        return exportPageImage(sourcePage, page, plan);
       }
       : async outputPages => new Blob([await pdfExporter.assembleOutputPdf(outputPages, inputPdfs, plan.pdfSettings)], { type: "application/pdf" });
 
@@ -5033,17 +5085,19 @@ const { defaultExportName, exportTargetPages, sameExportPlan } = _pdfEditorModul
 // ダウンロード欄の表示と、前回の書き出し設定・ファイルを保持する。
 // ページ・選択・元PDFは、必要なときに呼び出し元から読み取る。
 function createDownloadPanel(ui, properties, context, onSubmit) {
-  const layouts = { pdf: "combined", jpg: "zip" };
+  let pdfLayout = "combined";
   const form = ui["export-form"];
+  const quality = ui["jpeg-quality"];
   let latestDownload = null;
 
   function options() {
     const extension = ui["export-format"].value;
     return {
-      extension, layout: layouts[extension],
+      extension, layout: extension === "pdf" ? pdfLayout : "zip",
       selectionOnly: ui["export-scope"].value === "selected",
       customName: ui["output-name"].value,
-      jpegDpi: Number(ui["jpeg-dpi"].value),
+      imageDpi: Number(ui["image-dpi"].value),
+      jpegQuality: Number(quality.value),
       pdfSettings: properties.settings(),
     };
   }
@@ -5052,14 +5106,17 @@ function createDownloadPanel(ui, properties, context, onSubmit) {
     const { pages, selectedIds, sources, available } = context();
     const disabled = !available || !pages.length;
     const { extension, layout, selectionOnly } = options();
+    const image = extension !== "pdf";
     const jpeg = extension === "jpg";
     const layoutInput = ui["export-layout"];
-    layoutInput.options[0].disabled = layoutInput.options[0].hidden = jpeg;
+    layoutInput.options[0].disabled = layoutInput.options[0].hidden = image;
     layoutInput.value = layout;
     ui["export-menu-toggle"].disabled = disabled;
     for (const id of ["output-name", "export-format", "export-scope", "export-layout"]) ui[id].disabled = disabled;
-    ui["jpeg-dpi"].disabled = disabled || !jpeg;
-    ui["jpeg-dpi"].hidden = ui["jpeg-dpi-label"].hidden = !jpeg;
+    ui["image-dpi"].disabled = disabled || !image;
+    ui["image-dpi"].hidden = ui["image-dpi-label"].hidden = !image;
+    quality.disabled = disabled || !jpeg;
+    ui["jpeg-quality-field"].hidden = ui["jpeg-quality-label"].hidden = !jpeg;
     const targets = exportTargetPages(pages, selectedIds, selectionOnly);
     const count = targets.length;
     const exportCount = "書き出し対象 " + count + "ページ";
@@ -5117,14 +5174,22 @@ function createDownloadPanel(ui, properties, context, onSubmit) {
     ui["output-name"].value = "";
     ui["export-scope"].value = "all";
     ui["export-format"].value = "pdf";
-    ui["export-layout"].value = layouts.pdf = "combined";
-    ui["jpeg-dpi"].value = "150";
-    layouts.jpg = "zip";
+    ui["export-layout"].value = pdfLayout = "combined";
+    ui["image-dpi"].value = "150";
+    quality.value = quality.defaultValue;
+    updateQualityLabel();
   }
 
+  function updateQualityLabel() {
+    const label = quality.value + "%";
+    ui["jpeg-quality-value"].textContent = label;
+    quality.setAttribute("aria-valuetext", label);
+  }
+
+  quality.addEventListener("input", updateQualityLabel);
   ui["export-menu-toggle"].addEventListener("click", () => setOpen(form.hidden, true));
   form.addEventListener("change", event => {
-    if (event.target === ui["export-layout"]) layouts[ui["export-format"].value] = event.target.value;
+    if (event.target === ui["export-layout"] && ui["export-format"].value === "pdf") pdfLayout = event.target.value;
     update();
   });
   form.addEventListener("submit", onSubmit);
@@ -5149,7 +5214,7 @@ const { sourceImageFormat } = _pdfEditorModule22;
 const { readSourcePdfProperties, validatePdfOutputSettings } = _pdfEditorModule3;
 const { openExternalAnnotationRenderer } = _pdfEditorModule20;
 const { duplicatePdfFormWarning, unsupportedPdfWarning } = _pdfEditorModule10;
-const { JpegExportError } = _pdfEditorModule26;
+const { ImageExportError } = _pdfEditorModule26;
 
 function createEditorFiles({
   annotationEditor,
@@ -5371,7 +5436,7 @@ function createEditorFiles({
   }
 
   function showExportError(error) {
-    const detail = error instanceof ExportSourceError || error instanceof JpegExportError
+    const detail = error instanceof ExportSourceError || error instanceof ImageExportError
       ? "\n" + error.message : "";
     showStatus("書き出しに失敗しました。" + detail + "\n編集内容は画面に残っています。", { error: true });
     console.error(error);

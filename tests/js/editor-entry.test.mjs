@@ -120,8 +120,10 @@ function createBrowserHarness(html) {
   }
   for (const [id, value] of Object.entries({
     "export-format": "pdf", "export-layout": "combined", "export-scope": "all",
-    "jpeg-dpi": "150", "preview-layout": "single", "preview-direction": "left",
-  })) controls.get(id).value = value;
+    "image-dpi": "150", "jpeg-dpi": "150", "preview-layout": "single", "preview-direction": "left",
+  })) {
+    if (controls.has(id)) controls.get(id).value = value;
+  }
   const document = new Element("document");
   document.body = new Element("body");
   document.querySelectorAll = selector => ({

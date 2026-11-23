@@ -19,7 +19,8 @@ function fixture() {
   } });
   ui["export-format"].value = "pdf";
   ui["export-scope"].value = "all";
-  ui["jpeg-dpi"].value = "150";
+  ui["image-dpi"].value = "150";
+  ui["jpeg-quality"].value = ui["jpeg-quality"].defaultValue = "92";
   ui["export-form"].hidden = true;
   const downloads = [];
   const doc = new Control();
@@ -48,12 +49,25 @@ test("保存形式を往復してもPDFのまとめ方を保ち、対象数と�
   assert.equal(ui["export-submit"].disabled, false);
   change("export-layout", "zip");
   change("export-format", "jpg");
-  assert.equal(ui["jpeg-dpi"].hidden, false);
+  assert.equal(ui["image-dpi"].hidden, false);
+  assert.equal(ui["jpeg-quality-field"].hidden, false);
   assert.equal(ui["export-layout"].options[0].hidden, true);
   assert.equal(panel.options().layout, "zip");
+  ui["jpeg-quality"].value = "0";
+  ui["jpeg-quality"].dispatchEvent(new Event("input"));
+  assert.equal(ui["jpeg-quality-value"].textContent, "0%");
+  assert.equal(ui["jpeg-quality"].attrs.get("aria-valuetext"), "0%");
+  assert.equal(panel.options().jpegQuality, 0);
+  change("export-format", "png");
+  assert.equal(ui["image-dpi"].hidden, false);
+  assert.equal(ui["jpeg-quality-field"].hidden, true);
+  assert.equal(ui["jpeg-quality"].disabled, true);
+  assert.equal(panel.options().layout, "zip");
+  change("export-format", "jpg");
+  assert.equal(panel.options().jpegQuality, 0);
   change("export-format", "pdf");
   assert.equal(panel.options().layout, "zip");
-  assert.equal(ui["jpeg-dpi"].hidden, true);
+  assert.equal(ui["image-dpi"].hidden, true);
   change("export-scope", "selected");
   assert.equal(ui["export-submit"].disabled, true);
   state.selectedIds.add("page1"); panel.update();
@@ -82,13 +96,16 @@ test("開閉・送信・進捗とリセットを扱い、クリア後は初期�
   assert.equal(ui["export-spinner"].hidden, true);
   change("export-layout", "zip");
   change("export-format", "jpg");
+  ui["jpeg-quality"].value = "20";
   ui["output-name"].value = "changed";
   panel.reset();
   assert.equal(ui["export-form"].hidden, true);
   assert.equal(panel.options().extension, "pdf");
   assert.equal(panel.options().layout, "combined");
   assert.equal(panel.options().customName, "");
-  assert.equal(panel.options().jpegDpi, 150);
+  assert.equal(panel.options().imageDpi, 150);
+  assert.equal(panel.options().jpegQuality, 92);
+  assert.equal(ui["jpeg-quality-value"].textContent, "92%");
 });
 
 test("同じ書き出し設定と文書では再利用し、ファイル名・編集・設定が変われば新しく書き出す", () => {

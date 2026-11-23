@@ -203,6 +203,20 @@
 .export-fields :disabled {
   opacity: .48;
 }
+.jpeg-quality-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4ch;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.jpeg-quality-field input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
 .export-fields input[readonly] {
   background: var(--paper);
   color: var(--muted);

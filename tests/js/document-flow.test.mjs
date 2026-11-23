@@ -72,7 +72,7 @@ test("文書の履歴はページの版だけを戻し、書き出しは確定�
   history.commit(changeDocumentAnnotations(history.pages, "b", annotations => [...annotations, { id: 1 }]));
 
   const plan = createExportPlan(history.pages, selected, sourceFiles, {
-    selectionOnly: true, customName: "", extension: "jpg", layout: "zip", jpegDpi: 600,
+    selectionOnly: true, customName: "", extension: "jpg", layout: "zip", imageDpi: 600,
   });
   assert.equal(plan.name, "添付_edit");
   assert.deepEqual([...plan.sources.keys()], [2]);
