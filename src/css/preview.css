@@ -78,6 +78,10 @@
   scrollbar-gutter: stable;
   touch-action: none;
 }
+.preview-stage.file-drop-active {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
 .preview-stage[data-navigation="true"] {
   cursor: grab;
   user-select: none;

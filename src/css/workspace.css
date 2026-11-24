@@ -73,6 +73,7 @@ main {
 }
 
 .pages-panel, .preview-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -263,10 +264,32 @@ main {
   margin-top: 9px;
   padding-inline: 20px;
 }
-body.file-over .page-area {
+.page-area.file-drop-active {
   background: #e4edff;
   outline: 3px solid var(--accent);
   outline-offset: -3px;
+}
+
+.pages-panel:has(.file-drop-active)::after,
+.preview-panel:has(.file-drop-active)::after {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  z-index: 15;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: var(--accent-dark);
+  color: white;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.pages-panel:has(.file-drop-active)::after {
+  content: "ページとして追加";
+}
+.preview-panel:has(.file-drop-active)::after {
+  content: "画像スタンプを配置";
 }
 
 /* ページカードとサムネイル */

@@ -9,6 +9,7 @@ import { createExternalAnnotationCodec } from "./external-annotations.mjs";
 import { mergePdfLayers } from "./pdf-layers.mjs";
 import { initializeGeneratedPdf, copyPdfOutputIntents, generatedPdfVersionLabel } from "./pdf-document.mjs";
 import { createImagePdf } from "./image-import.mjs";
+import { prepareStampBitmap } from "./image-stamp.mjs";
 import { annotationAppearanceState, annotationSavedState } from "./annotation-state.mjs";
 import { annotationOutputFlags } from "./annotation-locks.mjs";
 
@@ -34,7 +35,12 @@ export function createPdfExporter(pdfLib) {
       for (const ref of refs?.asArray() ?? []) {
         const dict = source.context.lookup(ref);
         if (dict instanceof pdfLib.PDFDict && featurePolicy.isDynamicAnnotation(dict)) continue;
-        const native = annotationCodec.read(page, ref);
+        let native = annotationCodec.read(page, ref);
+        if (native?.annotation.kind === "stamp" && prepareExternal) {
+          // 復元できない画像はPDF本来の外観に任せる。
+          try { await prepareStampBitmap(native.annotation.image); }
+          catch { native = null; }
+        }
         if (prepareExternal && native?.foreignAppearance) {
           const appearance = externalCodec.read(page, ref)?.annotation;
           if (appearance && !(appearance.pdfFlags & (8 | 16))) {

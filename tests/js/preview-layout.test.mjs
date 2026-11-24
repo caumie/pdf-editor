@@ -117,7 +117,7 @@ for (const direction of ["left", "right", "vertical"]) test("見開きのペー�
     loadSourcePage: model => Promise.resolve(sources.find(source => source.id === model.id)),
     drawAnnotationsOnCanvas: (canvas, viewport, annotations) => marks.push(annotations.map(a => a.id)),
     stopPreviewZoom() {}, drawPreviewAnnotations() {}, refreshHighlightTextLayer() {}, resetPointerOperation() {}, showPreviewMessage() {},
-    captureZoomAnchor: () => null, updateFitButton() {}, updateAnnotationControls() {}, workspaceAvailable: () => true, renderVisibleThumbnails() {},
+    capturePagePosition: () => ({ x: 0, y: 0 }), captureZoomAnchor: () => null, updateFitButton() {}, updateAnnotationControls() {}, workspaceAvailable: () => true, renderVisibleThumbnails() {},
     goToPreview: index => { context.pageView.previewPageId = pages[index].id; },
   });
   for (const fn of ["replacePreviewRender", "activePreviewPageIndex", "activePreviewPage", "layoutPreviewPage", "previewFitBounds", "updatePreviewMeta", "renderPreview"]) installEditorHandler(context, fn);
@@ -293,7 +293,7 @@ test("領域を変更しページを追加してもプレビューの倍率と�
     workspace: { busy: false, sourcePdfs: new Map([[1, {}]]) }, pointerOperation: null,
     previewTouches: { reset() {} }, previewPageIndexes, renderPdfPreviewPages, mountPreviewPages,
     loadSourcePage: async () => source, stopPreviewZoom() {}, drawPreviewAnnotations() {}, refreshHighlightTextLayer() {}, resetPointerOperation() {}, showPreviewMessage() {},
-    captureZoomAnchor: () => ({ pageId: "a", point: [150, 450], x: 300, y: 300 }),
+    capturePagePosition: () => ({ x: 0, y: 0 }), captureZoomAnchor: () => ({ pageId: "a", point: [150, 450], x: 300, y: 300 }),
     updateFitButton() {}, updateAnnotationControls() {}, workspaceAvailable: () => true, renderVisibleThumbnails() {},
     updateZoomControls() {}, refinePreviewAfterZoom() {},
   });

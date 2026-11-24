@@ -7,7 +7,7 @@ export function mountPreviewPages(nodes, rendered, models, indexes, activeIndex,
   nodes.activePage.setAttribute("aria-label", (indexes[activeIndex] + 1) + "ページ目（編集中）");
   active.canvas.style.width = active.canvas.style.height = "100%";
   nodes.base.replaceChildren(active.canvas);
-  const pageLayers = [{ element: nodes.activePage, layer: nodes.base, entry: active }];
+  const pageLayers = [{ element: nodes.activePage, layer: nodes.base, entry: active, pageId: models[activeIndex]?.id, addedRotation: models[activeIndex]?.addedRotation }];
   const shadows = [];
   const companions = [];
   for (const [index, entry] of rendered.entries.entries()) {
@@ -33,7 +33,7 @@ export function mountPreviewPages(nodes, rendered, models, indexes, activeIndex,
     button.append(canvas);
     button.addEventListener("click", event => activatePage(model, event));
     companions.push(button);
-    pageLayers.push({ element: button, layer: button, entry, annotations: model.annotations });
+    pageLayers.push({ element: button, layer: button, entry, pageId: model.id, addedRotation: model.addedRotation, annotations: model.annotations });
   }
   nodes.shadows.replaceChildren(...shadows);
   nodes.companions.replaceChildren(...companions);

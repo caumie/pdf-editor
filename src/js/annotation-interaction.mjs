@@ -74,11 +74,11 @@ export function transformAnnotationDrag({ original, handle, textWidth }, dx, dy,
       const { anchorX, anchorY, cornerX, cornerY } = handle;
       let scaleX = resizeScale(cornerX - anchorX, dx);
       let scaleY = resizeScale(cornerY - anchorY, dy);
+      if (original.kind === "stamp" || (original.kind === "external" && keepAspect)) {
+        const scale = Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY;
+        scaleX = scaleY = Math.max(scale, 1 / Math.min(Math.abs(cornerX - anchorX), Math.abs(cornerY - anchorY)));
+      }
       if (original.kind === "external") {
-        if (keepAspect) {
-          const scale = Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY;
-          scaleX = scaleY = Math.max(scale, 1 / Math.min(Math.abs(cornerX - anchorX), Math.abs(cornerY - anchorY)));
-        }
         return resizeExternalAnnotation(original, anchorX, anchorY, scaleX, scaleY);
       }
       return { ...original, points: original.points.map(([x, y]) =>
@@ -133,6 +133,8 @@ export function hitTestAnnotation(annotations, point, scale, includeExternal, me
       if (x >= -tolerance && x <= width + tolerance && y >= -tolerance && y <= height + tolerance) return annotation;
     } else if (annotation.kind === "highlight") {
       if (annotation.quads.some(points => pointInBounds(point, annotationBounds({ points }), tolerance))) return annotation;
+    } else if (annotation.kind === "stamp") {
+      if (pointInBounds(point, annotationBounds(annotation), tolerance)) return annotation;
     } else if (annotation.kind === "rect") {
       const bounds = annotationBounds(annotation);
       const margin = tolerance + annotation.width / 2;

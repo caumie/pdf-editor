@@ -1,3 +1,4 @@
+import { stampBitmap } from "./image-stamp.mjs";
 import { currentOriginalAppearance } from "./annotation-state.mjs";
 
 const textAnnotationImages = new WeakMap();
@@ -78,7 +79,7 @@ export function annotationHandles(annotation, scale) {
     return [{ action: "wrap", x, y }];
   }
   const handles = [];
-  if (annotation.kind !== "external" && annotation.kind !== "rect" && annotation.points.length > 1) {
+  if (annotation.kind !== "external" && annotation.kind !== "rect" && annotation.kind !== "stamp" && annotation.points.length > 1) {
     for (const index of [0, annotation.points.length - 1]) {
       const [x, y] = annotation.points[index];
       handles.push({ action: "endpoint", index, x, y });
@@ -356,6 +357,16 @@ function drawAnnotation(ctx, annotation, textScale) {
       if (annotation.subtype === "Highlight") ctx.globalCompositeOperation = "multiply";
       ctx.drawImage(raster.canvas, 0, 0, width, height);
     }
+  } else if (annotation.kind === "stamp") {
+    const image = stampBitmap(annotation.image);
+    const bounds = annotationBounds(annotation);
+    const sideways = annotation.rotation % 180 !== 0;
+    const width = sideways ? bounds.height : bounds.width;
+    const height = sideways ? bounds.width : bounds.height;
+    ctx.translate(bounds.left + bounds.width / 2, bounds.bottom + bounds.height / 2);
+    ctx.rotate(annotation.rotation * Math.PI / 180);
+    ctx.scale(1, -1);
+    if (image) ctx.drawImage(image, -width / 2, -height / 2, width, height);
   } else if (isTextAnnotation(annotation.kind)) {
     const { canvas, width, height } = renderTextAnnotationImage(annotation, textScale);
     ctx.translate(annotation.x, annotation.y);

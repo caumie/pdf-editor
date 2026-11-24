@@ -83,7 +83,10 @@ export function createPreviewController({
   }
 
   function replacePreviewRender(key) {
-    if (key === null) previewDetail.clear();
+    if (key === null) {
+      previewDetail.clear();
+      preview.pendingPagePosition = null;
+    }
     preview.renderTask?.cancel();
     preview.renderTask = null;
     preview.renderKey = key;
@@ -121,9 +124,13 @@ export function createPreviewController({
     }
     const version = replacePreviewRender(key);
     if (!samePage || !page) {
+      // 描画中にさらにページを送っても、最後に表示していた位置を引き継ぐ。
+      if (!page || preview.centerOnRender) preview.pendingPagePosition = null;
+      else if (preview.bitmap) preview.pendingPagePosition = capturePagePosition();
       previewDetail.clear();
       interaction.previewTouches?.reset();
       preview.bitmap = null;
+      preview.stampTargets = [];
       refreshHighlightTextLayer();
       resetPointerOperation();
       annotationEditor.hoveredId = null;
@@ -144,7 +151,16 @@ export function createPreviewController({
       preview.renderTask = rendered.task;
       await rendered.task.promise;
       if (version !== preview.renderVersion) return;
-      const anchor = !preview.centerOnRender && samePage ? captureZoomAnchor() : null;
+      let pagePosition = preview.pendingPagePosition;
+      let anchor = null;
+      if (preview.centerOnRender) pagePosition = null;
+      else if (samePage) {
+        if (preview.bitmap.displayZoom === zoom && page.addedRotation === preview.bitmap.addedRotation) {
+          pagePosition = capturePagePosition();
+        } else {
+          anchor = captureZoomAnchor();
+        }
+      }
       const activeIndex = models.findIndex(model => model?.id === page.id);
       const active = rendered.entries[activeIndex];
       preview.bitmap = { pageId: page.id, addedRotation: page.addedRotation, sourcePage: sourcePages[activeIndex], viewport: active.viewport,
@@ -158,9 +174,11 @@ export function createPreviewController({
           interaction.previewTouches?.reset();
           goToPreview(documentHistory.pages.findIndex(page => page.id === model.id));
         });
+      preview.stampTargets = pageLayers;
       previewDetail.setPages(pageLayers);
       ui["preview-sheet"].hidden = false; ui["preview-message"].hidden = true;
-      layoutPreviewPage(zoom, anchor);
+      layoutPreviewPage(zoom, anchor, pagePosition);
+      preview.pendingPagePosition = null;
       preview.centerOnRender = false;
       refreshHighlightTextLayer();
       updateFitButton();
@@ -184,6 +202,28 @@ export function createPreviewController({
         renderVisibleThumbnails();
       }
     }
+  }
+
+  function stampDropTarget({ clientX, clientY }) {
+    if (!preview.bitmap || ui["preview-sheet"].hidden || ui["preview-edit-bars"].hidden
+        || ui["mark-dialog"].open || interaction.pointerOperation) return null;
+
+    const stage = previewStage.getBoundingClientRect();
+    if (clientX < stage.left || clientX >= stage.left + previewStage.clientWidth
+        || clientY < stage.top || clientY >= stage.top + previewStage.clientHeight) return null;
+
+    // 外部ファイルのドラッグでは、イベントの要素が描画レイヤーやプレビュー枠になることがある。
+    // 表示中の用紙の矩形で判定し、描画の精細化が進行中でも同じ位置を受け付ける。
+    for (const { element, entry, pageId, addedRotation } of preview.stampTargets ?? []) {
+      const bounds = element.getBoundingClientRect();
+      if (clientX < bounds.left || clientX >= bounds.right || clientY < bounds.top || clientY >= bounds.bottom) continue;
+      const model = documentHistory.pages.find(page => page.id === pageId);
+      if (!model || model.addedRotation !== addedRotation) return null;
+      const viewport = entry.viewport;
+      const point = clientToPdfPoint(clientX, clientY, bounds, viewport);
+      return point && { element, viewport, point, model };
+    }
+    return null;
   }
 
   function activePreviewPageIndex() {
@@ -226,7 +266,13 @@ export function createPreviewController({
     return preview.bitmap.displayZoom / preview.bitmap.rasterZoom;
   }
 
-  function layoutPreviewPage(zoom, anchor) {
+  function capturePagePosition() {
+    const stage = previewStage.getBoundingClientRect();
+    const surface = ui["preview-surface"].getBoundingClientRect();
+    return { x: surface.left - stage.left, y: surface.top - stage.top };
+  }
+
+  function layoutPreviewPage(zoom, anchor, pagePosition) {
     const stage = previewStage;
     const sheet = ui["preview-sheet"];
     const surface = ui["preview-surface"];
@@ -247,7 +293,11 @@ export function createPreviewController({
     surface.style.width = width + "px";
     surface.style.height = height + "px";
     previewTextLayer.style.setProperty("--text-zoom", String(scale));
-    if (anchor?.pageId === preview.bitmap.pageId) {
+    if (pagePosition) {
+      const current = capturePagePosition();
+      stage.scrollLeft += current.x - pagePosition.x;
+      stage.scrollTop += current.y - pagePosition.y;
+    } else if (anchor?.pageId === preview.bitmap.pageId) {
       const [x, y] = viewport.convertToViewportPoint(...anchor.point);
       stage.scrollLeft = (sheetWidth - width) / 2 + ((preview.bitmap.spread?.x ?? 0) + x) * scale - (anchor.x - stageRect.left);
       stage.scrollTop = (sheetHeight - height) / 2 + ((preview.bitmap.spread?.y ?? 0) + y) * scale - (anchor.y - stageRect.top);
@@ -574,6 +624,7 @@ export function createPreviewController({
   }
 
   return {
+    stampDropTarget,
     updatePreviewPageInfo,
     replacePreviewRender,
     renderPreview,

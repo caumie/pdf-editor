@@ -9,6 +9,8 @@ import { duplicatePdfFormWarning, unsupportedPdfWarning } from "./pdf-feature-po
 import { ImageExportError } from "./image-export.mjs";
 
 export function createEditorFiles({
+  addDroppedStamp,
+  stampDropTarget,
   annotationEditor,
   commitDocumentRevision,
   documentHistory,
@@ -235,32 +237,68 @@ export function createEditorFiles({
   }
 
   function bindFileDrop() {
-    let fileDragDepth = 0;
-    function hasFiles(event) {
-      return event.dataTransfer.types.includes("Files");
+    const list = ui["page-area"];
+    let marked = null;
+
+    function mark(element) {
+      if (marked === element) return;
+      marked?.classList.remove("file-drop-active");
+      marked = element;
+      marked?.classList.add("file-drop-active");
     }
-    window.addEventListener("dragenter", event => {
-      if (!hasFiles(event)) return;
+
+    function fileItems(transfer) {
+      return Array.from(transfer.items ?? []).filter(item => item.kind === "file");
+    }
+
+    function isFileDrag(transfer, items = fileItems(transfer)) {
+      return items.length > 0 || transfer.files?.length > 0 || Array.from(transfer.types ?? []).includes("Files");
+    }
+
+    function isPdf(file) {
+      return ["application/pdf", "com.adobe.pdf"].includes(file.type.toLowerCase()) || /\.pdf$/i.test(file.name);
+    }
+
+    function hover(event) {
+      const transfer = event.dataTransfer;
+      if (!transfer) return;
+      const items = fileItems(transfer);
+      if (!isFileDrag(transfer, items)) return;
       event.preventDefault();
-      fileDragDepth += 1;
-      if (workspace.ready && !workspace.busy) document.body.classList.add("file-over");
-    });
-    window.addEventListener("dragover", event => {
-      if (!hasFiles(event)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = workspace.ready && !workspace.busy ? "copy" : "none";
-    });
+      const onList = event.target instanceof Node && ui["pages-panel"].contains(event.target);
+      // OSからのドラッグ中は種類が空欄だったり、OS独自の型で届いたりする。
+      // PDFと複数ファイルは除外し、それ以外はドロップ後に画像の内容で確かめる。
+      const possibleStamp = items.length <= 1 && !items.some(item =>
+        ["application/pdf", "com.adobe.pdf"].includes(item.type.toLowerCase()));
+      let target = null;
+      if (workspaceAvailable()) {
+        if (onList) target = list;
+        else if (possibleStamp && stampDropTarget(event)) target = ui["preview-stage"];
+      }
+      mark(target);
+      transfer.dropEffect = target ? "copy" : "none";
+    }
+
+    window.addEventListener("dragenter", hover);
+    window.addEventListener("dragover", hover);
     window.addEventListener("dragleave", event => {
-      if (!hasFiles(event)) return;
-      fileDragDepth = Math.max(0, fileDragDepth - 1);
-      if (!fileDragDepth) document.body.classList.remove("file-over");
+      if (event.dataTransfer && isFileDrag(event.dataTransfer) && !event.relatedTarget) mark(null);
     });
-    window.addEventListener("drop", event => {
-      if (!hasFiles(event)) return;
+    window.addEventListener("drop", async event => {
+      if (!event.dataTransfer || !isFileDrag(event.dataTransfer)) return;
       event.preventDefault();
-      fileDragDepth = 0;
-      document.body.classList.remove("file-over");
-      importDocumentFiles([...event.dataTransfer.files]);
+      mark(null);
+      if (!workspaceAvailable()) return;
+      const files = Array.from(event.dataTransfer.files);
+      if (event.target instanceof Node && ui["pages-panel"].contains(event.target)) {
+        const documents = files.filter(file => sourceImageFormat(file) || isPdf(file));
+        if (!documents.length) return;
+        await importDocumentFiles(documents);
+        list.focus({ preventScroll: true });
+      } else if (files.length === 1 && !isPdf(files[0])) {
+        const target = stampDropTarget(event);
+        if (target) await addDroppedStamp(files[0], target);
+      }
     });
   }
 

@@ -5,9 +5,9 @@ import { normalizeRotation } from "./page-coordinates.mjs";
 import { decodePdfText } from "./pdf-text.mjs";
 
 const markupKey = "PDFPageEditorV1";
-const markupSubtypes = { text: "FreeText", note: "FreeText", rect: "Square", line: "Line", pen: "Ink", highlight: "Highlight" };
+const markupSubtypes = { text: "FreeText", note: "FreeText", rect: "Square", line: "Line", pen: "Ink", highlight: "Highlight", stamp: "Stamp" };
 
-const editorAnnotationName = /^pdf-page-editor-(text|note|rect|line|pen|highlight)-[0-9a-f-]{36}$/;
+const editorAnnotationName = /^pdf-page-editor-(text|note|rect|line|pen|highlight|stamp)-[0-9a-f-]{36}$/;
 
 export function makeAnnotationName(kind) {
   // randomUUID は安全なコンテキストだけで利用できるため、通常のHTTP配信にも対応する。
@@ -20,7 +20,7 @@ export function makeAnnotationName(kind) {
 }
 
 export function createPdfAnnotationCodec(pdfLib) {
-  const { PDFArray, PDFDict, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString } = pdfLib;
+  const { PDFArray, PDFDict, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFString } = pdfLib;
   const name = PDFName.of;
   const text = PDFHexString.fromText;
   const token = PDFString.of;
@@ -32,7 +32,8 @@ export function createPdfAnnotationCodec(pdfLib) {
     const bounds = annotationBounds(annotation);
     const isText = isTextAnnotation(annotation.kind);
     const highlight = annotation.kind === "highlight";
-    const pad = isText || highlight ? 0 : annotation.width / 2;
+    const stamp = annotation.kind === "stamp";
+    const pad = isText || highlight || stamp ? 0 : annotation.width / 2;
     const left = bounds.left - pad;
     const bottom = bounds.bottom - pad;
     const width = bounds.width + 2 * pad;
@@ -64,10 +65,22 @@ export function createPdfAnnotationCodec(pdfLib) {
       Type: "Annot", Subtype: subtype, Rect: rect, P: page.ref, F: annotationOutputFlags(annotation),
       NM: text(annotation.nativeName),
     };
-    if (!highlight) native.BS = context.obj({ Type: "Border", W: border, S: "S" });
-    const { id, nativeName, sourceAnnotationRef, originalAppearance, appearancePageIndex, appearanceKey, text: contents, points, quads, x, y, createdAt, modifiedAt, ...privateData } = annotation;
+    if (!highlight && !stamp) native.BS = context.obj({ Type: "Border", W: border, S: "S" });
+    const { id, nativeName, sourceAnnotationRef, originalAppearance, appearancePageIndex, appearanceKey, text: contents, points, quads, x, y, createdAt, modifiedAt, image: stampImage, ...privateData } = annotation;
 
-    if (highlight) {
+    if (stamp) {
+      const image = await output.embedPng(stampImage);
+      resources.XObject.StampImage = image.ref;
+      native.Name = name("Approved");
+      native.PPEStampImage = context.register(context.stream(stampImage));
+      const matrix = {
+        0: [width, 0, 0, height, 0, 0],
+        90: [0, height, -width, 0, width, 0],
+        180: [-width, 0, 0, -height, width, height],
+        270: [0, -height, width, 0, 0, height],
+      }[annotation.rotation];
+      ops.push(concatTransformationMatrix(...matrix), drawObject("StampImage"));
+    } else if (highlight) {
       const opacity = opacityFromTransparency(annotation.fillTransparency);
       native.QuadPoints = quads.flat(2);
       native.C = colorChannels(annotation.color);
@@ -260,7 +273,14 @@ export function createPdfAnnotationCodec(pdfLib) {
       if (right <= left || top <= bottom) return null;
 
       let annotation;
-      if (kind === "highlight") {
+      if (kind === "stamp") {
+        const stream = dictValue(dict, "PPEStampImage", PDFRawStream);
+        const image = stream?.getContents();
+        if (!image?.length || stream.dict.has(name("Filter"))) return null;
+        const rotation = normalizeRotation(stored.rotation ?? 0);
+        if (![0, 90, 180, 270].includes(rotation)) return null;
+        annotation = { kind, image, rotation, points: [[left, bottom], [right, top]] };
+      } else if (kind === "highlight") {
         const values = numbers(dictValue(dict, "QuadPoints", PDFArray));
         if (!values.length || values.length % 8 !== 0) return null;
         const quads = [];

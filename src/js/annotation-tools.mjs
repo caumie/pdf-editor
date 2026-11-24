@@ -7,6 +7,7 @@ import { selectedHighlightQuads, selectedPageText } from "./text-highlight.mjs";
 import { makeAnnotationName } from "./pdf-annotations.mjs";
 import { changeDocumentAnnotations } from "./document-pages.mjs";
 import { arrangeAnnotations } from "./annotation-layout.mjs";
+import { loadStampImage, placeImageStamp } from "./image-stamp.mjs";
 import { fitAnnotationToPage } from "./annotation-interaction.mjs";
 
 export function createAnnotationTools({
@@ -61,7 +62,8 @@ export function createAnnotationTools({
     if (ui["preview-edit-bars"].hidden || !workspaceAvailable() || interaction.pointerOperation) return false;
     const annotations = selectedAnnotations();
     if (!annotations.length || annotations.some(annotation => annotation.kind === "external")) return false;
-    annotationClipboard.annotations = structuredClone(annotations);
+    annotationClipboard.annotations = annotations.map(annotation => annotation.kind === "stamp"
+      ? annotation : structuredClone(annotation));
     annotationClipboard.sourcePageId = pageView.previewPageId;
     annotationClipboard.pasteCounts.clear();
     updateAnnotationControls();
@@ -269,6 +271,29 @@ export function createAnnotationTools({
   function updatePageAnnotations(pageId, change) {
     if (workspace.busy || ui["preview-edit-bars"].hidden) return;
     commitDocumentRevision(changeDocumentAnnotations(documentHistory.pages, pageId, change));
+  }
+
+  async function addDroppedStamp(file, target) {
+    const { model, viewport, point } = target;
+    let image;
+    try { image = await loadStampImage(file); }
+    catch {
+      showStatus("画像スタンプを読み込めませんでした。", { error: true });
+      return;
+    }
+    const page = documentHistory.pages.find(page => page.id === model.id);
+    if (!workspaceAvailable() || ui["preview-edit-bars"].hidden || ui["mark-dialog"].open || interaction.pointerOperation
+        || !page || page.addedRotation !== model.addedRotation) return;
+    const annotation = fitAnnotationToPage({
+      ...placeImageStamp(image, point, viewport),
+      id: annotationEditor.nextId++, nativeName: makeAnnotationName("stamp"),
+    }, viewport.viewBox);
+    setPreviewTool("select");
+    commitDocumentRevision(changeDocumentAnnotations(documentHistory.pages, page.id, annotations => [...annotations, annotation]), {
+      ...pageView, previewPageId: page.id,
+    });
+    selectAnnotation(annotation);
+    previewStage.focus({ preventScroll: true });
   }
 
   function replacePageAnnotation(pageId, replacement) {
@@ -486,6 +511,7 @@ export function createAnnotationTools({
 
   return {
     ...gestures,
+    addDroppedStamp,
     selectedAnnotation,
     hasAnnotationGroupSelection,
     copySelectedAnnotations,

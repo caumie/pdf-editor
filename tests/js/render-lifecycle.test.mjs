@@ -46,6 +46,26 @@ test("ページ取得中に切り替えた古い要求は、注釈の追加描�
   assert.deepEqual(mounted, ["b"]); assert.equal(prepared.length, 1); assert.equal(c.preview.bitmap.pageId, "b");
   assert.equal(c.ui["preview-meta"].textContent, "2ページ目 / 10.58 × 14.11 cm");
 });
+test("描画待ちに続けてページを送っても、最後に表示したページの位置と倍率を引き継ぐ", async () => {
+  const { c, mounted } = fixture(), skipped = deferred();
+  const position = { x: -143, y: -72 };
+  const layouts = [];
+  c.capturePagePosition = () => position;
+  c.layoutPreviewPage = (zoom, anchor, pagePosition) => layouts.push({ zoom, anchor, pagePosition });
+  c.preview.requestedZoom = 2;
+  await c.renderPreview();
+  c.documentHistory.pages.push({ id: "c", sourcePdfId: 1, addedRotation: 0, annotations: [] });
+  c.loadSourcePage = model => model.id === "b" ? skipped.promise : Promise.resolve(model);
+  c.pageView.previewPageId = "b";
+  const pending = c.renderPreview();
+  c.pageView.previewPageId = "c";
+  await c.renderPreview();
+  skipped.resolve({});
+  await pending;
+  assert.deepEqual(mounted, ["a", "c"]);
+  assert.deepEqual(layouts.at(-1), { zoom: 2, anchor: null, pagePosition: position });
+  assert.equal(c.preview.pendingPagePosition, null);
+});
 test("描画待ちにクリアした場合、遅れて完了してもページを復活させない", async () => {
   const { c, mounted } = fixture(), draw = deferred(); let cancelled = 0;
   const render = c.renderPdfPreviewPages;

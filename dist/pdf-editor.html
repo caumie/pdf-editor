@@ -585,6 +585,7 @@ main {
 }
 
 .pages-panel, .preview-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -775,10 +776,32 @@ main {
   margin-top: 9px;
   padding-inline: 20px;
 }
-body.file-over .page-area {
+.page-area.file-drop-active {
   background: #e4edff;
   outline: 3px solid var(--accent);
   outline-offset: -3px;
+}
+
+.pages-panel:has(.file-drop-active)::after,
+.preview-panel:has(.file-drop-active)::after {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  z-index: 15;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: var(--accent-dark);
+  color: white;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.pages-panel:has(.file-drop-active)::after {
+  content: "ページとして追加";
+}
+.preview-panel:has(.file-drop-active)::after {
+  content: "画像スタンプを配置";
 }
 
 /* ページカードとサムネイル */
@@ -1062,6 +1085,10 @@ body.file-over .page-area {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   touch-action: none;
+}
+.preview-stage.file-drop-active {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
 }
 .preview-stage[data-navigation="true"] {
   cursor: grab;
@@ -1638,7 +1665,7 @@ body.file-over .page-area {
             </select>
           </label>
         </div>
-        <div class="page-area" id="page-area">
+        <div class="page-area" id="page-area" tabindex="-1">
           <div class="page-list-empty" id="page-list-empty">
             <div class="page-list-empty-icon" aria-hidden="true"><span>PDF</span></div>
             <h3 class="page-list-empty-title" id="page-list-empty-title">PDF・画像を追加</h3>
@@ -2900,12 +2927,272 @@ function setAnnotationsLocked(annotations, ids, locked) {
 return { annotationLockMask, annotationIsLocked, annotationOutputFlags, annotationSelectionLock, setAnnotationsLocked };
 })();
 
-// src/js/annotation-state.mjs
+// src/js/image-import.mjs
 const _pdfEditorModule14 = (() => {
+function sourceImageFormat(file) {
+  const type = file.type?.toLowerCase();
+  if (type === "image/jpeg") return "JPEG";
+  if (type === "image/png") return "PNG";
+  if (/\.jpe?g$/i.test(file.name)) return "JPEG";
+  if (/\.png$/i.test(file.name)) return "PNG";
+  return null;
+}
+
+function* jpegSegments(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return;
+  for (let offset = 2; offset + 4 <= bytes.length && bytes[offset] === 0xff;) {
+    const marker = bytes[offset + 1];
+    if (marker === 0xff) { offset++; continue; }
+    if (marker === 0xda || marker === 0xd9) break;
+    if (marker === 1 || marker >= 0xd0 && marker <= 0xd7) { offset += 2; continue; }
+    const length = view.getUint16(offset + 2);
+    const end = offset + 2 + length;
+    if (length < 2 || end > bytes.length) break;
+    yield { marker, start: offset + 4, end };
+    offset = end;
+  }
+}
+
+function* jpegExifFields(view, start, end) {
+  const tiff = start + 6;
+  if (tiff + 8 > end || view.getUint32(start) !== 0x45786966 || view.getUint16(start + 4) !== 0) return;
+  const order = view.getUint16(tiff);
+  const little = order === 0x4949;
+  if ((!little && order !== 0x4d4d) || view.getUint16(tiff + 2, little) !== 42) return;
+  const directory = tiff + view.getUint32(tiff + 4, little);
+  if (directory < tiff + 8 || directory + 2 > end) return;
+  const count = view.getUint16(directory, little);
+  for (let index = 0, entry = directory + 2; index < count && entry + 12 <= end; index++, entry += 12) {
+    if (view.getUint32(entry + 4, little) !== 1) continue;
+    yield { tag: view.getUint16(entry, little), type: view.getUint16(entry + 2, little), value: entry + 8, tiff, little };
+  }
+}
+
+function readJpegOrientation(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (const { marker, start, end } of jpegSegments(bytes)) {
+    if (marker !== 0xe1) continue;
+    for (const { tag, type, value, little } of jpegExifFields(view, start, end)) {
+      if (tag !== 0x0112 || type !== 3) continue;
+      const orientation = view.getUint16(value, little);
+      if (orientation >= 2 && orientation <= 8) {
+        // PDFの描画命令で向きを指定するため、埋め込み用のコピーではEXIFによる補正を無効にする。
+        view.setUint16(value, 1, little);
+        return orientation;
+      }
+      return 1;
+    }
+  }
+  return 1;
+}
+
+function readImageDpi(bytes, format) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (format === "PNG") {
+    for (let offset = 8; offset + 12 <= bytes.length;) {
+      const size = view.getUint32(offset);
+      const end = offset + 12 + size;
+      if (end > bytes.length) break;
+      const type = view.getUint32(offset + 4);
+      if (type === 0x70485973 && size === 9 && view.getUint8(offset + 16) === 1) {
+        const x = view.getUint32(offset + 8), y = view.getUint32(offset + 12);
+        if (x && y) return [x * 0.0254, y * 0.0254];
+      }
+      if (type === 0x49444154) break;
+      offset = end;
+    }
+    return [96, 96];
+  }
+
+  let jfif, exif, orientation = 1;
+  for (const { marker, start, end } of jpegSegments(bytes)) {
+    if (marker === 0xe0 && start + 12 <= end
+      && view.getUint32(start) === 0x4a464946 && view.getUint8(start + 4) === 0) {
+      const unit = view.getUint8(start + 7);
+      const x = view.getUint16(start + 8), y = view.getUint16(start + 10);
+      if ((unit === 1 || unit === 2) && x && y) {
+        const factor = unit === 2 ? 2.54 : 1;
+        jfif ??= [x * factor, y * factor];
+      }
+    }
+    if (marker !== 0xe1) continue;
+    let unit = 2, x, y;
+    for (const { tag, type, value, tiff, little } of jpegExifFields(view, start, end)) {
+      if (tag === 0x0112 && type === 3) orientation = view.getUint16(value, little);
+      if (tag === 0x0128 && type === 3) unit = view.getUint16(value, little);
+      if (type !== 5 || (tag !== 0x011a && tag !== 0x011b)) continue;
+      const offset = tiff + view.getUint32(value, little);
+      if (offset < tiff + 8 || offset + 8 > end) continue;
+      const dpi = view.getUint32(offset, little) / view.getUint32(offset + 4, little);
+      if (!(Number.isFinite(dpi) && dpi > 0)) continue;
+      if (tag === 0x011a) x = dpi;
+      else y = dpi;
+    }
+    if ((unit === 2 || unit === 3) && x && y) {
+      const factor = unit === 3 ? 2.54 : 1;
+      exif ??= [x * factor, y * factor];
+    }
+  }
+  const dpi = exif ?? jfif ?? [96, 96];
+  // createImageBitmap はEXIFに従って画像を回すため、物理解像度の軸も合わせる。
+  return orientation >= 5 && orientation <= 8 ? [dpi[1], dpi[0]] : dpi;
+}
+
+// JPEG内のICCをPDFの画像色空間からも参照する。圧縮済みJPEG自体は再エンコードしない。
+function readJpegIcc(bytes) {
+  const id = new TextEncoder().encode("ICC_PROFILE\0");
+  const parts = new Map();
+  let count = 0, length = 0;
+  for (const { marker, start, end } of jpegSegments(bytes)) {
+    if (marker !== 0xe2 || end - start < 14 || !id.every((value, i) => bytes[start + i] === value)) continue;
+    const index = bytes[start + 12], total = bytes[start + 13];
+    if (!index || index > total || (count && total !== count) || parts.has(index)) return null;
+    count = total;
+    const chunk = bytes.subarray(start + 14, end);
+    parts.set(index, chunk);
+    length += chunk.length;
+  }
+  if (!count || parts.size !== count || length < 132) return null;
+  const profile = new Uint8Array(length);
+  let offset = 0;
+  for (let index = 1; index <= count; index++) {
+    const chunk = parts.get(index);
+    profile.set(chunk, offset); offset += chunk.length;
+  }
+  const view = new DataView(profile.buffer);
+  if (view.getUint32(0) !== length || view.getUint32(36) !== 0x61637370) return null;
+  const signatures = new Map([[0x47524159, ["DeviceGray", 1]], [0x52474220, ["DeviceRGB", 3]], [0x434d594b, ["DeviceCMYK", 4]]]);
+  const color = signatures.get(view.getUint32(16));
+  const tags = view.getUint32(128);
+  if (!color || !tags || tags > Math.floor((length - 132) / 12)) return null;
+  for (let i = 0; i < tags; i++) {
+    const data = view.getUint32(132 + 12 * i + 4), size = view.getUint32(132 + 12 * i + 8);
+    if (data < 132 + tags * 12 || data + size > length || size < 8) return null;
+  }
+  return { profile, colorSpace: color[0], components: color[1] };
+}
+
+function orientImage(pdfLib, orientation, width, height) {
+  const matrix = {
+    2: [-1, 0, 0, 1, width, 0],
+    3: [-1, 0, 0, -1, width, height],
+    4: [1, 0, 0, -1, 0, height],
+    5: [0, -1, -1, 0, height, width],
+    6: [0, -1, 1, 0, 0, width],
+    7: [0, 1, 1, 0, 0, 0],
+    8: [0, 1, -1, 0, height, 0],
+  }[orientation];
+  return pdfLib.concatTransformationMatrix(...matrix);
+}
+
+async function createImagePdf(pdfLib, file, format) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const orientation = format === "JPEG" ? readJpegOrientation(bytes) : 1;
+  const document = await pdfLib.PDFDocument.create({ updateMetadata: false });
+  const image = await (format === "JPEG" ? document.embedJpg(bytes) : document.embedPng(bytes));
+  if (!(image.width > 0 && image.height > 0)) throw new Error("画像の寸法が無効です。");
+  const swapped = orientation >= 5;
+  const width = swapped ? image.height : image.width;
+  const height = swapped ? image.width : image.height;
+  const a4 = pdfLib.PageSizes.A4;
+  const bounds = width > height ? [a4[1], a4[0]] : a4;
+  // 96 px/inで換算し、大きな画像は縦横比を保ったままA4に収める。埋め込む画素はそのまま使う。
+  const scale = Math.min(72 / 96, bounds[0] / width, bounds[1] / height);
+  const page = document.addPage([width * scale, height * scale]);
+  const drawnWidth = image.width * scale;
+  const drawnHeight = image.height * scale;
+  if (orientation !== 1) page.pushOperators(pdfLib.pushGraphicsState(), orientImage(pdfLib, orientation, drawnWidth, drawnHeight));
+  page.drawImage(image, { x: 0, y: 0, width: drawnWidth, height: drawnHeight });
+  if (orientation !== 1) page.pushOperators(pdfLib.popGraphicsState());
+  const embeddedIcc = format === "JPEG" ? readJpegIcc(bytes) : null;
+  if (embeddedIcc) {
+    await image.embed();
+    const stream = document.context.lookup(image.ref);
+    const name = pdfLib.PDFName.of;
+    const alternate = name(embeddedIcc.colorSpace);
+    if (stream?.dict.lookup(name("ColorSpace")) === alternate) {
+      const profile = document.context.flateStream(embeddedIcc.profile, { N: embeddedIcc.components, Alternate: alternate });
+      stream.dict.set(name("ColorSpace"), document.context.obj(["ICCBased", document.context.register(profile)]));
+    }
+  }
+  return {
+    pdfFile: new Blob([await document.save()], { type: "application/pdf" }),
+    image: { format, width, height },
+  };
+}
+
+return { sourceImageFormat, readImageDpi, createImagePdf };
+})();
+
+// src/js/image-stamp.mjs
+const _pdfEditorModule15 = (() => {
+const { readImageDpi } = _pdfEditorModule14;
+
+const stampBitmaps = new WeakMap();
+const stampDpi = new WeakMap();
+
+function stampBitmap(bytes) {
+  return stampBitmaps.get(bytes);
+}
+
+async function prepareStampBitmap(bytes) {
+  if (!stampBitmaps.has(bytes)) {
+    stampBitmaps.set(bytes, await createImageBitmap(new Blob([bytes], { type: "image/png" })));
+  }
+}
+
+async function loadStampImage(file) {
+  const source = new Uint8Array(await file.arrayBuffer());
+  const png = [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => source[index] === byte);
+  const jpeg = source[0] === 255 && source[1] === 216 && source[2] === 255;
+  if (!png && !jpeg) throw new Error("PNGまたはJPEGを選んでください。");
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const encoded = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    if (!encoded) throw new Error("画像を変換できません。");
+    const bytes = new Uint8Array(await encoded.arrayBuffer());
+    stampBitmaps.set(bytes, canvas);
+    stampDpi.set(bytes, readImageDpi(source, png ? "PNG" : "JPEG"));
+    return bytes;
+  } finally {
+    bitmap.close();
+  }
+}
+
+function placeImageStamp(image, point, viewport) {
+  const { width, height } = stampBitmap(image);
+  const rotation = viewport.rotation;
+  const sideways = rotation % 180 !== 0;
+  const [left, bottom, right, top] = viewport.viewBox;
+  const pageWidth = right - left, pageHeight = top - bottom;
+  const [dpiX, dpiY] = stampDpi.get(image) ?? [96, 96];
+  const unitsPerInch = 72 / (viewport.userUnit ?? 1);
+  const naturalWidth = width / dpiX * unitsPerInch;
+  const naturalHeight = height / dpiY * unitsPerInch;
+  const stampWidth = sideways ? naturalHeight : naturalWidth;
+  const stampHeight = sideways ? naturalWidth : naturalHeight;
+  const scale = Math.min(1, pageWidth / stampWidth, pageHeight / stampHeight);
+  const halfWidth = stampWidth * scale / 2;
+  const halfHeight = stampHeight * scale / 2;
+  const [x, y] = point;
+  return { kind: "stamp", image, rotation,
+    points: [[x - halfWidth, y - halfHeight], [x + halfWidth, y + halfHeight]] };
+}
+
+return { stampBitmap, prepareStampBitmap, loadStampImage, placeImageStamp };
+})();
+
+// src/js/annotation-state.mjs
+const _pdfEditorModule16 = (() => {
 // 画面内の識別子・表示キャッシュを除き、読み込み時と現在の保存内容を比較する。
 // キー順やオブジェクトの作り直しでは変更扱いにせず、配列の座標順は保つ。
 function annotationSavedState(annotation) {
-  const { id, appearanceKey, appearancePageIndex, originalAppearance, sourceAnnotationRef, ...saved } = annotation;
+  const { id, appearanceKey, appearancePageIndex, originalAppearance, sourceAnnotationRef, image, ...saved } = annotation;
   function ordered(value) {
     if (Array.isArray(value)) return value.map(ordered);
     if (value && typeof value === "object") {
@@ -2932,8 +3219,9 @@ return { annotationSavedState, annotationAppearanceState, currentOriginalAppeara
 })();
 
 // src/js/annotations.mjs
-const _pdfEditorModule15 = (() => {
-const { currentOriginalAppearance } = _pdfEditorModule14;
+const _pdfEditorModule17 = (() => {
+const { stampBitmap } = _pdfEditorModule15;
+const { currentOriginalAppearance } = _pdfEditorModule16;
 
 const textAnnotationImages = new WeakMap();
 const defaultTextRasterScale = 3;
@@ -3013,7 +3301,7 @@ function annotationHandles(annotation, scale) {
     return [{ action: "wrap", x, y }];
   }
   const handles = [];
-  if (annotation.kind !== "external" && annotation.kind !== "rect" && annotation.points.length > 1) {
+  if (annotation.kind !== "external" && annotation.kind !== "rect" && annotation.kind !== "stamp" && annotation.points.length > 1) {
     for (const index of [0, annotation.points.length - 1]) {
       const [x, y] = annotation.points[index];
       handles.push({ action: "endpoint", index, x, y });
@@ -3291,6 +3579,16 @@ function drawAnnotation(ctx, annotation, textScale) {
       if (annotation.subtype === "Highlight") ctx.globalCompositeOperation = "multiply";
       ctx.drawImage(raster.canvas, 0, 0, width, height);
     }
+  } else if (annotation.kind === "stamp") {
+    const image = stampBitmap(annotation.image);
+    const bounds = annotationBounds(annotation);
+    const sideways = annotation.rotation % 180 !== 0;
+    const width = sideways ? bounds.height : bounds.width;
+    const height = sideways ? bounds.width : bounds.height;
+    ctx.translate(bounds.left + bounds.width / 2, bounds.bottom + bounds.height / 2);
+    ctx.rotate(annotation.rotation * Math.PI / 180);
+    ctx.scale(1, -1);
+    if (image) ctx.drawImage(image, -width / 2, -height / 2, width, height);
   } else if (isTextAnnotation(annotation.kind)) {
     const { canvas, width, height } = renderTextAnnotationImage(annotation, textScale);
     ctx.translate(annotation.x, annotation.y);
@@ -3441,7 +3739,7 @@ return { setExternalAnnotationRaster, releaseExternalAnnotationRasters, lineArro
 })();
 
 // src/js/drawing-styles.mjs
-const _pdfEditorModule16 = (() => {
+const _pdfEditorModule18 = (() => {
 const { editorSettingKey } = _pdfEditorModule1;
 
 const styleStorageKey = editorSettingKey("styles.v3");
@@ -3539,7 +3837,7 @@ return { drawingStyleRanges, toolStyleFields, styleInputProperties, loadDrawingS
 })();
 
 // src/js/page-coordinates.mjs
-const _pdfEditorModule17 = (() => {
+const _pdfEditorModule19 = (() => {
 function normalizeRotation(angle) {
   return ((angle % 360) + 360) % 360;
 }
@@ -3564,17 +3862,17 @@ return { normalizeRotation, clientToPdfPoint, pdfViewportScale };
 })();
 
 // src/js/pdf-annotations.mjs
-const _pdfEditorModule18 = (() => {
+const _pdfEditorModule20 = (() => {
 const { annotationIsLocked, annotationOutputFlags } = _pdfEditorModule13;
-const { annotationBounds, annotationFillOpacity, colorChannels, isTextAnnotation, opacityFromTransparency, renderTextAnnotationImage, textBoxPointToPdf, noteInkColor, lineArrowPoints } = _pdfEditorModule15;
-const { normalizeDrawingStyle } = _pdfEditorModule16;
-const { normalizeRotation } = _pdfEditorModule17;
+const { annotationBounds, annotationFillOpacity, colorChannels, isTextAnnotation, opacityFromTransparency, renderTextAnnotationImage, textBoxPointToPdf, noteInkColor, lineArrowPoints } = _pdfEditorModule17;
+const { normalizeDrawingStyle } = _pdfEditorModule18;
+const { normalizeRotation } = _pdfEditorModule19;
 const { decodePdfText } = _pdfEditorModule8;
 
 const markupKey = "PDFPageEditorV1";
-const markupSubtypes = { text: "FreeText", note: "FreeText", rect: "Square", line: "Line", pen: "Ink", highlight: "Highlight" };
+const markupSubtypes = { text: "FreeText", note: "FreeText", rect: "Square", line: "Line", pen: "Ink", highlight: "Highlight", stamp: "Stamp" };
 
-const editorAnnotationName = /^pdf-page-editor-(text|note|rect|line|pen|highlight)-[0-9a-f-]{36}$/;
+const editorAnnotationName = /^pdf-page-editor-(text|note|rect|line|pen|highlight|stamp)-[0-9a-f-]{36}$/;
 
 function makeAnnotationName(kind) {
   // randomUUID は安全なコンテキストだけで利用できるため、通常のHTTP配信にも対応する。
@@ -3587,7 +3885,7 @@ function makeAnnotationName(kind) {
 }
 
 function createPdfAnnotationCodec(pdfLib) {
-  const { PDFArray, PDFDict, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString } = pdfLib;
+  const { PDFArray, PDFDict, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFString } = pdfLib;
   const name = PDFName.of;
   const text = PDFHexString.fromText;
   const token = PDFString.of;
@@ -3599,7 +3897,8 @@ function createPdfAnnotationCodec(pdfLib) {
     const bounds = annotationBounds(annotation);
     const isText = isTextAnnotation(annotation.kind);
     const highlight = annotation.kind === "highlight";
-    const pad = isText || highlight ? 0 : annotation.width / 2;
+    const stamp = annotation.kind === "stamp";
+    const pad = isText || highlight || stamp ? 0 : annotation.width / 2;
     const left = bounds.left - pad;
     const bottom = bounds.bottom - pad;
     const width = bounds.width + 2 * pad;
@@ -3631,10 +3930,22 @@ function createPdfAnnotationCodec(pdfLib) {
       Type: "Annot", Subtype: subtype, Rect: rect, P: page.ref, F: annotationOutputFlags(annotation),
       NM: text(annotation.nativeName),
     };
-    if (!highlight) native.BS = context.obj({ Type: "Border", W: border, S: "S" });
-    const { id, nativeName, sourceAnnotationRef, originalAppearance, appearancePageIndex, appearanceKey, text: contents, points, quads, x, y, createdAt, modifiedAt, ...privateData } = annotation;
+    if (!highlight && !stamp) native.BS = context.obj({ Type: "Border", W: border, S: "S" });
+    const { id, nativeName, sourceAnnotationRef, originalAppearance, appearancePageIndex, appearanceKey, text: contents, points, quads, x, y, createdAt, modifiedAt, image: stampImage, ...privateData } = annotation;
 
-    if (highlight) {
+    if (stamp) {
+      const image = await output.embedPng(stampImage);
+      resources.XObject.StampImage = image.ref;
+      native.Name = name("Approved");
+      native.PPEStampImage = context.register(context.stream(stampImage));
+      const matrix = {
+        0: [width, 0, 0, height, 0, 0],
+        90: [0, height, -width, 0, width, 0],
+        180: [-width, 0, 0, -height, width, height],
+        270: [0, -height, width, 0, 0, height],
+      }[annotation.rotation];
+      ops.push(concatTransformationMatrix(...matrix), drawObject("StampImage"));
+    } else if (highlight) {
       const opacity = opacityFromTransparency(annotation.fillTransparency);
       native.QuadPoints = quads.flat(2);
       native.C = colorChannels(annotation.color);
@@ -3827,7 +4138,14 @@ function createPdfAnnotationCodec(pdfLib) {
       if (right <= left || top <= bottom) return null;
 
       let annotation;
-      if (kind === "highlight") {
+      if (kind === "stamp") {
+        const stream = dictValue(dict, "PPEStampImage", PDFRawStream);
+        const image = stream?.getContents();
+        if (!image?.length || stream.dict.has(name("Filter"))) return null;
+        const rotation = normalizeRotation(stored.rotation ?? 0);
+        if (![0, 90, 180, 270].includes(rotation)) return null;
+        annotation = { kind, image, rotation, points: [[left, bottom], [right, top]] };
+      } else if (kind === "highlight") {
         const values = numbers(dictValue(dict, "QuadPoints", PDFArray));
         if (!values.length || values.length % 8 !== 0) return null;
         const quads = [];
@@ -3971,7 +4289,7 @@ return { makeAnnotationName, createPdfAnnotationCodec };
 })();
 
 // src/js/libraries.mjs
-const _pdfEditorModule19 = (() => {
+const _pdfEditorModule21 = (() => {
 // 配布形式ごとの違いは、ライブラリと補助データの取得方法に限る。
 const libraryFiles = {
   "vendor-pdfjs": "pdfjs/build/pdf.min.mjs",
@@ -4058,12 +4376,12 @@ return { PdfResources, loadLibraries };
 })();
 
 // src/js/external-annotations.mjs
-const _pdfEditorModule20 = (() => {
+const _pdfEditorModule22 = (() => {
 const { annotationIsLocked, annotationOutputFlags } = _pdfEditorModule13;
 const { removePdfAnnotationsAndReplies } = _pdfEditorModule12;
-const { PdfResources } = _pdfEditorModule19;
-const { annotationSavedState, currentOriginalAppearance } = _pdfEditorModule14;
-const { setExternalAnnotationRaster, releaseExternalAnnotationRasters } = _pdfEditorModule15;
+const { PdfResources } = _pdfEditorModule21;
+const { annotationSavedState, currentOriginalAppearance } = _pdfEditorModule16;
+const { setExternalAnnotationRaster, releaseExternalAnnotationRasters } = _pdfEditorModule17;
 
 // リンク、フォーム部品、親注釈に従うポップアップは個別の操作対象にしない。
 const relatedAnnotationSubtypes = new Set(["Link", "Widget", "Popup"]);
@@ -4274,7 +4592,7 @@ return { createExternalAnnotationCodec, openExternalAnnotationRenderer };
 })();
 
 // src/js/pdf-layers.mjs
-const _pdfEditorModule21 = (() => {
+const _pdfEditorModule23 = (() => {
 // ページと同じ copier を使い、ページの /OC 参照と文書のレイヤー設定を一致させる。
 function mergePdfLayers(pdfLib, output, source, copier, { keepAlternateConfigurations = false } = {}) {
   const { PDFArray, PDFDict, PDFName } = pdfLib;
@@ -4327,162 +4645,21 @@ function mergePdfLayers(pdfLib, output, source, copier, { keepAlternateConfigura
 return { mergePdfLayers };
 })();
 
-// src/js/image-import.mjs
-const _pdfEditorModule22 = (() => {
-function sourceImageFormat(file) {
-  const type = file.type?.toLowerCase();
-  if (type === "image/jpeg") return "JPEG";
-  if (type === "image/png") return "PNG";
-  if (/\.jpe?g$/i.test(file.name)) return "JPEG";
-  if (/\.png$/i.test(file.name)) return "PNG";
-  return null;
-}
-
-function* jpegSegments(bytes) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return;
-  for (let offset = 2; offset + 4 <= bytes.length && bytes[offset] === 0xff;) {
-    const marker = bytes[offset + 1];
-    if (marker === 0xff) { offset++; continue; }
-    if (marker === 0xda || marker === 0xd9) break;
-    if (marker === 1 || marker >= 0xd0 && marker <= 0xd7) { offset += 2; continue; }
-    const length = view.getUint16(offset + 2);
-    const end = offset + 2 + length;
-    if (length < 2 || end > bytes.length) break;
-    yield { marker, start: offset + 4, end };
-    offset = end;
-  }
-}
-
-function readJpegOrientation(bytes) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  for (const { marker, start, end } of jpegSegments(bytes)) {
-    const tiff = start + 6;
-    if (marker === 0xe1 && tiff + 8 <= end && view.getUint32(start) === 0x45786966 && view.getUint16(start + 4) === 0) {
-      const order = view.getUint16(tiff);
-      const little = order === 0x4949;
-      if ((little || order === 0x4d4d) && view.getUint16(tiff + 2, little) === 42) {
-        const directory = tiff + view.getUint32(tiff + 4, little);
-        if (directory >= tiff + 8 && directory + 2 <= end) {
-          const count = view.getUint16(directory, little);
-          for (let index = 0, entry = directory + 2; index < count && entry + 12 <= end; index++, entry += 12) {
-            if (view.getUint16(entry, little) !== 0x0112 || view.getUint16(entry + 2, little) !== 3
-                || view.getUint32(entry + 4, little) !== 1) continue;
-            const orientation = view.getUint16(entry + 8, little);
-            if (orientation >= 2 && orientation <= 8) {
-              // PDFの描画命令で向きを指定するため、埋め込み用のコピーではEXIFによる補正を無効にする。
-              view.setUint16(entry + 8, 1, little);
-              return orientation;
-            }
-            return 1;
-          }
-        }
-      }
-    }
-  }
-  return 1;
-}
-
-// JPEG内のICCをPDFの画像色空間からも参照する。圧縮済みJPEG自体は再エンコードしない。
-function readJpegIcc(bytes) {
-  const id = new TextEncoder().encode("ICC_PROFILE\0");
-  const parts = new Map();
-  let count = 0, length = 0;
-  for (const { marker, start, end } of jpegSegments(bytes)) {
-    if (marker !== 0xe2 || end - start < 14 || !id.every((value, i) => bytes[start + i] === value)) continue;
-    const index = bytes[start + 12], total = bytes[start + 13];
-    if (!index || index > total || (count && total !== count) || parts.has(index)) return null;
-    count = total;
-    const chunk = bytes.subarray(start + 14, end);
-    parts.set(index, chunk);
-    length += chunk.length;
-  }
-  if (!count || parts.size !== count || length < 132) return null;
-  const profile = new Uint8Array(length);
-  let offset = 0;
-  for (let index = 1; index <= count; index++) {
-    const chunk = parts.get(index);
-    profile.set(chunk, offset); offset += chunk.length;
-  }
-  const view = new DataView(profile.buffer);
-  if (view.getUint32(0) !== length || view.getUint32(36) !== 0x61637370) return null;
-  const signatures = new Map([[0x47524159, ["DeviceGray", 1]], [0x52474220, ["DeviceRGB", 3]], [0x434d594b, ["DeviceCMYK", 4]]]);
-  const color = signatures.get(view.getUint32(16));
-  const tags = view.getUint32(128);
-  if (!color || !tags || tags > Math.floor((length - 132) / 12)) return null;
-  for (let i = 0; i < tags; i++) {
-    const data = view.getUint32(132 + 12 * i + 4), size = view.getUint32(132 + 12 * i + 8);
-    if (data < 132 + tags * 12 || data + size > length || size < 8) return null;
-  }
-  return { profile, colorSpace: color[0], components: color[1] };
-}
-
-function orientImage(pdfLib, orientation, width, height) {
-  const matrix = {
-    2: [-1, 0, 0, 1, width, 0],
-    3: [-1, 0, 0, -1, width, height],
-    4: [1, 0, 0, -1, 0, height],
-    5: [0, -1, -1, 0, height, width],
-    6: [0, -1, 1, 0, 0, width],
-    7: [0, 1, 1, 0, 0, 0],
-    8: [0, 1, -1, 0, height, 0],
-  }[orientation];
-  return pdfLib.concatTransformationMatrix(...matrix);
-}
-
-async function createImagePdf(pdfLib, file, format) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const orientation = format === "JPEG" ? readJpegOrientation(bytes) : 1;
-  const document = await pdfLib.PDFDocument.create({ updateMetadata: false });
-  const image = await (format === "JPEG" ? document.embedJpg(bytes) : document.embedPng(bytes));
-  if (!(image.width > 0 && image.height > 0)) throw new Error("画像の寸法が無効です。");
-  const swapped = orientation >= 5;
-  const width = swapped ? image.height : image.width;
-  const height = swapped ? image.width : image.height;
-  const a4 = pdfLib.PageSizes.A4;
-  const bounds = width > height ? [a4[1], a4[0]] : a4;
-  // 96 px/inで換算し、大きな画像は縦横比を保ったままA4に収める。埋め込む画素はそのまま使う。
-  const scale = Math.min(72 / 96, bounds[0] / width, bounds[1] / height);
-  const page = document.addPage([width * scale, height * scale]);
-  const drawnWidth = image.width * scale;
-  const drawnHeight = image.height * scale;
-  if (orientation !== 1) page.pushOperators(pdfLib.pushGraphicsState(), orientImage(pdfLib, orientation, drawnWidth, drawnHeight));
-  page.drawImage(image, { x: 0, y: 0, width: drawnWidth, height: drawnHeight });
-  if (orientation !== 1) page.pushOperators(pdfLib.popGraphicsState());
-  const embeddedIcc = format === "JPEG" ? readJpegIcc(bytes) : null;
-  if (embeddedIcc) {
-    await image.embed();
-    const stream = document.context.lookup(image.ref);
-    const name = pdfLib.PDFName.of;
-    const alternate = name(embeddedIcc.colorSpace);
-    if (stream?.dict.lookup(name("ColorSpace")) === alternate) {
-      const profile = document.context.flateStream(embeddedIcc.profile, { N: embeddedIcc.components, Alternate: alternate });
-      stream.dict.set(name("ColorSpace"), document.context.obj(["ICCBased", document.context.register(profile)]));
-    }
-  }
-  return {
-    pdfFile: new Blob([await document.save()], { type: "application/pdf" }),
-    image: { format, width, height },
-  };
-}
-
-return { sourceImageFormat, createImagePdf };
-})();
-
 // src/js/pdf-export.mjs
-const _pdfEditorModule23 = (() => {
+const _pdfEditorModule24 = (() => {
 const { createPdfCopyGraph, indexPdfCopySource, prunePdfObjects } = _pdfEditorModule9;
 const { createPdfFeaturePolicy, copyPdfFormData } = _pdfEditorModule10;
 const { mergePdfNavigation } = _pdfEditorModule11;
 const { applyPdfOutputSecurity, normalizePdfPermissions } = _pdfEditorModule3;
 const { removePdfAnnotationsAndReplies } = _pdfEditorModule12;
-const { createPdfAnnotationCodec } = _pdfEditorModule18;
-const { normalizeRotation } = _pdfEditorModule17;
-const { createExternalAnnotationCodec } = _pdfEditorModule20;
-const { mergePdfLayers } = _pdfEditorModule21;
+const { createPdfAnnotationCodec } = _pdfEditorModule20;
+const { normalizeRotation } = _pdfEditorModule19;
+const { createExternalAnnotationCodec } = _pdfEditorModule22;
+const { mergePdfLayers } = _pdfEditorModule23;
 const { initializeGeneratedPdf, copyPdfOutputIntents, generatedPdfVersionLabel } = _pdfEditorModule4;
-const { createImagePdf } = _pdfEditorModule22;
-const { annotationAppearanceState, annotationSavedState } = _pdfEditorModule14;
+const { createImagePdf } = _pdfEditorModule14;
+const { prepareStampBitmap } = _pdfEditorModule15;
+const { annotationAppearanceState, annotationSavedState } = _pdfEditorModule16;
 const { annotationOutputFlags } = _pdfEditorModule13;
 
 class ExportSourceError extends Error {}
@@ -4507,7 +4684,12 @@ function createPdfExporter(pdfLib) {
       for (const ref of refs?.asArray() ?? []) {
         const dict = source.context.lookup(ref);
         if (dict instanceof pdfLib.PDFDict && featurePolicy.isDynamicAnnotation(dict)) continue;
-        const native = annotationCodec.read(page, ref);
+        let native = annotationCodec.read(page, ref);
+        if (native?.annotation.kind === "stamp" && prepareExternal) {
+          // 復元できない画像はPDF本来の外観に任せる。
+          try { await prepareStampBitmap(native.annotation.image); }
+          catch { native = null; }
+        }
         if (prepareExternal && native?.foreignAppearance) {
           const appearance = externalCodec.read(page, ref)?.annotation;
           if (appearance && !(appearance.pdfFlags & (8 | 16))) {
@@ -4691,7 +4873,7 @@ return { ExportSourceError, createPdfExporter };
 })();
 
 // src/js/preview-layout.mjs
-const _pdfEditorModule24 = (() => {
+const _pdfEditorModule25 = (() => {
 function previewPageIndexes(count, index, { mode, cover, direction }) {
   if (index < 0 || index >= count) return [];
   if (mode !== "spread" || (cover && index === 0)) return [index];
@@ -4742,10 +4924,10 @@ return { previewPageIndexes, adjacentPreviewIndex, fitPreviewPages };
 })();
 
 // src/js/pdf-preview.mjs
-const _pdfEditorModule25 = (() => {
-const { normalizeRotation } = _pdfEditorModule17;
-const { PdfResources } = _pdfEditorModule19;
-const { fitPreviewPages } = _pdfEditorModule24;
+const _pdfEditorModule26 = (() => {
+const { normalizeRotation } = _pdfEditorModule19;
+const { PdfResources } = _pdfEditorModule21;
+const { fitPreviewPages } = _pdfEditorModule25;
 
 // PDF.js の AnnotationMode.ENABLE_STORAGE。復元済み注釈の noView を反映する。
 const annotationModeWithStorage = 3;
@@ -4861,10 +5043,10 @@ return { openSourcePdf, renderPdfThumbnail, renderPdfPreviewPages, cappedRasterS
 })();
 
 // src/js/image-export.mjs
-const _pdfEditorModule26 = (() => {
-const { normalizeRotation, pdfViewportScale } = _pdfEditorModule17;
-const { drawAnnotationsOnCanvas } = _pdfEditorModule15;
-const { renderPageCanvas } = _pdfEditorModule25;
+const _pdfEditorModule27 = (() => {
+const { normalizeRotation, pdfViewportScale } = _pdfEditorModule19;
+const { drawAnnotationsOnCanvas } = _pdfEditorModule17;
+const { renderPageCanvas } = _pdfEditorModule26;
 
 const maxImageSide = 16_384;
 const maxImagePixels = 80_000_000;
@@ -4960,9 +5142,9 @@ return { ImageExportError, exportPageImage };
 })();
 
 // src/js/export-job.mjs
-const _pdfEditorModule27 = (() => {
-const { ExportSourceError } = _pdfEditorModule23;
-const { exportPageImage, ImageExportError } = _pdfEditorModule26;
+const _pdfEditorModule28 = (() => {
+const { ExportSourceError } = _pdfEditorModule24;
+const { exportPageImage, ImageExportError } = _pdfEditorModule27;
 
 function cleanExportStem(value) {
   const stem = value.trim()
@@ -5079,8 +5261,8 @@ return { defaultExportName, exportTargetPages, createExportPlan, sameExportPlan,
 })();
 
 // src/js/download-panel.mjs
-const _pdfEditorModule28 = (() => {
-const { defaultExportName, exportTargetPages, sameExportPlan } = _pdfEditorModule27;
+const _pdfEditorModule29 = (() => {
+const { defaultExportName, exportTargetPages, sameExportPlan } = _pdfEditorModule28;
 
 // ダウンロード欄の表示と、前回の書き出し設定・ファイルを保持する。
 // ページ・選択・元PDFは、必要なときに呼び出し元から読み取る。
@@ -5205,18 +5387,20 @@ return { createDownloadPanel };
 })();
 
 // src/js/editor-files.mjs
-const _pdfEditorModule29 = (() => {
-const { openSourcePdf } = _pdfEditorModule25;
-const { loadLibraries } = _pdfEditorModule19;
-const { ExportSourceError, createPdfExporter } = _pdfEditorModule23;
-const { createExportPlan, createExportRunner } = _pdfEditorModule27;
-const { sourceImageFormat } = _pdfEditorModule22;
+const _pdfEditorModule30 = (() => {
+const { openSourcePdf } = _pdfEditorModule26;
+const { loadLibraries } = _pdfEditorModule21;
+const { ExportSourceError, createPdfExporter } = _pdfEditorModule24;
+const { createExportPlan, createExportRunner } = _pdfEditorModule28;
+const { sourceImageFormat } = _pdfEditorModule14;
 const { readSourcePdfProperties, validatePdfOutputSettings } = _pdfEditorModule3;
-const { openExternalAnnotationRenderer } = _pdfEditorModule20;
+const { openExternalAnnotationRenderer } = _pdfEditorModule22;
 const { duplicatePdfFormWarning, unsupportedPdfWarning } = _pdfEditorModule10;
-const { ImageExportError } = _pdfEditorModule26;
+const { ImageExportError } = _pdfEditorModule27;
 
 function createEditorFiles({
+  addDroppedStamp,
+  stampDropTarget,
   annotationEditor,
   commitDocumentRevision,
   documentHistory,
@@ -5443,32 +5627,68 @@ function createEditorFiles({
   }
 
   function bindFileDrop() {
-    let fileDragDepth = 0;
-    function hasFiles(event) {
-      return event.dataTransfer.types.includes("Files");
+    const list = ui["page-area"];
+    let marked = null;
+
+    function mark(element) {
+      if (marked === element) return;
+      marked?.classList.remove("file-drop-active");
+      marked = element;
+      marked?.classList.add("file-drop-active");
     }
-    window.addEventListener("dragenter", event => {
-      if (!hasFiles(event)) return;
+
+    function fileItems(transfer) {
+      return Array.from(transfer.items ?? []).filter(item => item.kind === "file");
+    }
+
+    function isFileDrag(transfer, items = fileItems(transfer)) {
+      return items.length > 0 || transfer.files?.length > 0 || Array.from(transfer.types ?? []).includes("Files");
+    }
+
+    function isPdf(file) {
+      return ["application/pdf", "com.adobe.pdf"].includes(file.type.toLowerCase()) || /\.pdf$/i.test(file.name);
+    }
+
+    function hover(event) {
+      const transfer = event.dataTransfer;
+      if (!transfer) return;
+      const items = fileItems(transfer);
+      if (!isFileDrag(transfer, items)) return;
       event.preventDefault();
-      fileDragDepth += 1;
-      if (workspace.ready && !workspace.busy) document.body.classList.add("file-over");
-    });
-    window.addEventListener("dragover", event => {
-      if (!hasFiles(event)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = workspace.ready && !workspace.busy ? "copy" : "none";
-    });
+      const onList = event.target instanceof Node && ui["pages-panel"].contains(event.target);
+      // OSからのドラッグ中は種類が空欄だったり、OS独自の型で届いたりする。
+      // PDFと複数ファイルは除外し、それ以外はドロップ後に画像の内容で確かめる。
+      const possibleStamp = items.length <= 1 && !items.some(item =>
+        ["application/pdf", "com.adobe.pdf"].includes(item.type.toLowerCase()));
+      let target = null;
+      if (workspaceAvailable()) {
+        if (onList) target = list;
+        else if (possibleStamp && stampDropTarget(event)) target = ui["preview-stage"];
+      }
+      mark(target);
+      transfer.dropEffect = target ? "copy" : "none";
+    }
+
+    window.addEventListener("dragenter", hover);
+    window.addEventListener("dragover", hover);
     window.addEventListener("dragleave", event => {
-      if (!hasFiles(event)) return;
-      fileDragDepth = Math.max(0, fileDragDepth - 1);
-      if (!fileDragDepth) document.body.classList.remove("file-over");
+      if (event.dataTransfer && isFileDrag(event.dataTransfer) && !event.relatedTarget) mark(null);
     });
-    window.addEventListener("drop", event => {
-      if (!hasFiles(event)) return;
+    window.addEventListener("drop", async event => {
+      if (!event.dataTransfer || !isFileDrag(event.dataTransfer)) return;
       event.preventDefault();
-      fileDragDepth = 0;
-      document.body.classList.remove("file-over");
-      importDocumentFiles([...event.dataTransfer.files]);
+      mark(null);
+      if (!workspaceAvailable()) return;
+      const files = Array.from(event.dataTransfer.files);
+      if (event.target instanceof Node && ui["pages-panel"].contains(event.target)) {
+        const documents = files.filter(file => sourceImageFormat(file) || isPdf(file));
+        if (!documents.length) return;
+        await importDocumentFiles(documents);
+        list.focus({ preventScroll: true });
+      } else if (files.length === 1 && !isPdf(files[0])) {
+        const target = stampDropTarget(event);
+        if (target) await addDroppedStamp(files[0], target);
+      }
     });
   }
 
@@ -5491,8 +5711,8 @@ return { createEditorFiles };
 })();
 
 // src/js/document-pages.mjs
-const _pdfEditorModule30 = (() => {
-const { normalizeRotation } = _pdfEditorModule17;
+const _pdfEditorModule31 = (() => {
+const { normalizeRotation } = _pdfEditorModule19;
 
 function rotateDocumentPages(pages, ids, angle) {
   return pages.map(page => ids.has(page.id)
@@ -5550,8 +5770,8 @@ return { rotateDocumentPages, removeDocumentPages, canMoveDocumentPages, moveDoc
 })();
 
 // src/js/page-actions.mjs
-const _pdfEditorModule31 = (() => {
-const { moveDocumentPages, placeDocumentPages, removeDocumentPages, rotateDocumentPages } = _pdfEditorModule30;
+const _pdfEditorModule32 = (() => {
+const { moveDocumentPages, placeDocumentPages, removeDocumentPages, rotateDocumentPages } = _pdfEditorModule31;
 
 function createPageActions({
   activePreviewPageIndex,
@@ -5653,7 +5873,7 @@ return { createPageActions };
 })();
 
 // src/js/thumbnail-cache.mjs
-const _pdfEditorModule32 = (() => {
+const _pdfEditorModule33 = (() => {
 // 画面外のPNGを保持する。取り出した画像のURLは呼び出し側へ管理を移す。
 function createThumbnailCache(byteLimit, revokeUrl) {
   const entries = new Map();
@@ -5690,12 +5910,12 @@ return { createThumbnailCache };
 })();
 
 // src/js/page-list.mjs
-const _pdfEditorModule33 = (() => {
-const { createThumbnailCache } = _pdfEditorModule32;
+const _pdfEditorModule34 = (() => {
+const { createThumbnailCache } = _pdfEditorModule33;
 const { thumbnailSizes } = _pdfEditorModule2;
-const { renderPdfThumbnail } = _pdfEditorModule25;
-const { drawAnnotationsOnCanvas } = _pdfEditorModule15;
-const { canMoveDocumentPages } = _pdfEditorModule30;
+const { renderPdfThumbnail } = _pdfEditorModule26;
+const { drawAnnotationsOnCanvas } = _pdfEditorModule17;
+const { canMoveDocumentPages } = _pdfEditorModule31;
 
 function createPageList({
   documentHistory,
@@ -6001,8 +6221,8 @@ return { createPageList };
 })();
 
 // src/js/preview-view.mjs
-const _pdfEditorModule34 = (() => {
-const { drawAnnotationsOnCanvas } = _pdfEditorModule15;
+const _pdfEditorModule35 = (() => {
+const { drawAnnotationsOnCanvas } = _pdfEditorModule17;
 
 // 描画済みPDFと注釈をDOMへ配置する。編集対象の変更は呼び出し元へ委ねる。
 function mountPreviewPages(nodes, rendered, models, indexes, activeIndex, activatePage, drawMarks = drawAnnotationsOnCanvas) {
@@ -6011,7 +6231,7 @@ function mountPreviewPages(nodes, rendered, models, indexes, activeIndex, activa
   nodes.activePage.setAttribute("aria-label", (indexes[activeIndex] + 1) + "ページ目（編集中）");
   active.canvas.style.width = active.canvas.style.height = "100%";
   nodes.base.replaceChildren(active.canvas);
-  const pageLayers = [{ element: nodes.activePage, layer: nodes.base, entry: active }];
+  const pageLayers = [{ element: nodes.activePage, layer: nodes.base, entry: active, pageId: models[activeIndex]?.id, addedRotation: models[activeIndex]?.addedRotation }];
   const shadows = [];
   const companions = [];
   for (const [index, entry] of rendered.entries.entries()) {
@@ -6037,7 +6257,7 @@ function mountPreviewPages(nodes, rendered, models, indexes, activeIndex, activa
     button.append(canvas);
     button.addEventListener("click", event => activatePage(model, event));
     companions.push(button);
-    pageLayers.push({ element: button, layer: button, entry, annotations: model.annotations });
+    pageLayers.push({ element: button, layer: button, entry, pageId: model.id, addedRotation: model.addedRotation, annotations: model.annotations });
   }
   nodes.shadows.replaceChildren(...shadows);
   nodes.companions.replaceChildren(...companions);
@@ -6057,7 +6277,7 @@ return { mountPreviewPages };
 })();
 
 // src/js/preview-gestures.mjs
-const _pdfEditorModule35 = (() => {
+const _pdfEditorModule36 = (() => {
 // 2本指操作はツールから独立させる。残った1本指を描画操作へ戻さず、全指が離れるまで扱う。
 function bindPreviewTouchGestures(stage, { canStart, start, move, end }) {
   const touches = new Map();
@@ -6138,7 +6358,7 @@ return { bindPreviewTouchGestures };
 })();
 
 // src/js/pane-separator.mjs
-const _pdfEditorModule36 = (() => {
+const _pdfEditorModule37 = (() => {
 const { editorSettingKey } = _pdfEditorModule1;
 
 const paneWidthStorageKey = editorSettingKey("pane-width");
@@ -6215,9 +6435,9 @@ return { bindPaneSeparator };
 })();
 
 // src/js/preview-detail.mjs
-const _pdfEditorModule37 = (() => {
-const { cappedRasterScale, previewPixelRatio, renderPdfPreviewRegion } = _pdfEditorModule25;
-const { drawAnnotationsOnCanvas } = _pdfEditorModule15;
+const _pdfEditorModule38 = (() => {
+const { cappedRasterScale, previewPixelRatio, renderPdfPreviewRegion } = _pdfEditorModule26;
+const { drawAnnotationsOnCanvas } = _pdfEditorModule17;
 
 const settleDelayMs = 100;
 const panMargin = 96;
@@ -6342,15 +6562,15 @@ return { createPreviewDetail };
 })();
 
 // src/js/preview-controller.mjs
-const _pdfEditorModule38 = (() => {
-const { adjacentPreviewIndex, previewPageIndexes } = _pdfEditorModule24;
-const { renderPdfPreviewPages } = _pdfEditorModule25;
-const { mountPreviewPages } = _pdfEditorModule34;
-const { clientToPdfPoint } = _pdfEditorModule17;
+const _pdfEditorModule39 = (() => {
+const { adjacentPreviewIndex, previewPageIndexes } = _pdfEditorModule25;
+const { renderPdfPreviewPages } = _pdfEditorModule26;
+const { mountPreviewPages } = _pdfEditorModule35;
+const { clientToPdfPoint } = _pdfEditorModule19;
 const { clampPreviewZoom, previewZoomLimits, saveViewPreferences } = _pdfEditorModule2;
-const { bindPreviewTouchGestures } = _pdfEditorModule35;
-const { bindPaneSeparator } = _pdfEditorModule36;
-const { createPreviewDetail } = _pdfEditorModule37;
+const { bindPreviewTouchGestures } = _pdfEditorModule36;
+const { bindPaneSeparator } = _pdfEditorModule37;
+const { createPreviewDetail } = _pdfEditorModule38;
 
 function createPreviewController({
   annotationEditor,
@@ -6428,7 +6648,10 @@ function createPreviewController({
   }
 
   function replacePreviewRender(key) {
-    if (key === null) previewDetail.clear();
+    if (key === null) {
+      previewDetail.clear();
+      preview.pendingPagePosition = null;
+    }
     preview.renderTask?.cancel();
     preview.renderTask = null;
     preview.renderKey = key;
@@ -6466,9 +6689,13 @@ function createPreviewController({
     }
     const version = replacePreviewRender(key);
     if (!samePage || !page) {
+      // 描画中にさらにページを送っても、最後に表示していた位置を引き継ぐ。
+      if (!page || preview.centerOnRender) preview.pendingPagePosition = null;
+      else if (preview.bitmap) preview.pendingPagePosition = capturePagePosition();
       previewDetail.clear();
       interaction.previewTouches?.reset();
       preview.bitmap = null;
+      preview.stampTargets = [];
       refreshHighlightTextLayer();
       resetPointerOperation();
       annotationEditor.hoveredId = null;
@@ -6489,7 +6716,16 @@ function createPreviewController({
       preview.renderTask = rendered.task;
       await rendered.task.promise;
       if (version !== preview.renderVersion) return;
-      const anchor = !preview.centerOnRender && samePage ? captureZoomAnchor() : null;
+      let pagePosition = preview.pendingPagePosition;
+      let anchor = null;
+      if (preview.centerOnRender) pagePosition = null;
+      else if (samePage) {
+        if (preview.bitmap.displayZoom === zoom && page.addedRotation === preview.bitmap.addedRotation) {
+          pagePosition = capturePagePosition();
+        } else {
+          anchor = captureZoomAnchor();
+        }
+      }
       const activeIndex = models.findIndex(model => model?.id === page.id);
       const active = rendered.entries[activeIndex];
       preview.bitmap = { pageId: page.id, addedRotation: page.addedRotation, sourcePage: sourcePages[activeIndex], viewport: active.viewport,
@@ -6503,9 +6739,11 @@ function createPreviewController({
           interaction.previewTouches?.reset();
           goToPreview(documentHistory.pages.findIndex(page => page.id === model.id));
         });
+      preview.stampTargets = pageLayers;
       previewDetail.setPages(pageLayers);
       ui["preview-sheet"].hidden = false; ui["preview-message"].hidden = true;
-      layoutPreviewPage(zoom, anchor);
+      layoutPreviewPage(zoom, anchor, pagePosition);
+      preview.pendingPagePosition = null;
       preview.centerOnRender = false;
       refreshHighlightTextLayer();
       updateFitButton();
@@ -6529,6 +6767,28 @@ function createPreviewController({
         renderVisibleThumbnails();
       }
     }
+  }
+
+  function stampDropTarget({ clientX, clientY }) {
+    if (!preview.bitmap || ui["preview-sheet"].hidden || ui["preview-edit-bars"].hidden
+        || ui["mark-dialog"].open || interaction.pointerOperation) return null;
+
+    const stage = previewStage.getBoundingClientRect();
+    if (clientX < stage.left || clientX >= stage.left + previewStage.clientWidth
+        || clientY < stage.top || clientY >= stage.top + previewStage.clientHeight) return null;
+
+    // 外部ファイルのドラッグでは、イベントの要素が描画レイヤーやプレビュー枠になることがある。
+    // 表示中の用紙の矩形で判定し、描画の精細化が進行中でも同じ位置を受け付ける。
+    for (const { element, entry, pageId, addedRotation } of preview.stampTargets ?? []) {
+      const bounds = element.getBoundingClientRect();
+      if (clientX < bounds.left || clientX >= bounds.right || clientY < bounds.top || clientY >= bounds.bottom) continue;
+      const model = documentHistory.pages.find(page => page.id === pageId);
+      if (!model || model.addedRotation !== addedRotation) return null;
+      const viewport = entry.viewport;
+      const point = clientToPdfPoint(clientX, clientY, bounds, viewport);
+      return point && { element, viewport, point, model };
+    }
+    return null;
   }
 
   function activePreviewPageIndex() {
@@ -6571,7 +6831,13 @@ function createPreviewController({
     return preview.bitmap.displayZoom / preview.bitmap.rasterZoom;
   }
 
-  function layoutPreviewPage(zoom, anchor) {
+  function capturePagePosition() {
+    const stage = previewStage.getBoundingClientRect();
+    const surface = ui["preview-surface"].getBoundingClientRect();
+    return { x: surface.left - stage.left, y: surface.top - stage.top };
+  }
+
+  function layoutPreviewPage(zoom, anchor, pagePosition) {
     const stage = previewStage;
     const sheet = ui["preview-sheet"];
     const surface = ui["preview-surface"];
@@ -6592,7 +6858,11 @@ function createPreviewController({
     surface.style.width = width + "px";
     surface.style.height = height + "px";
     previewTextLayer.style.setProperty("--text-zoom", String(scale));
-    if (anchor?.pageId === preview.bitmap.pageId) {
+    if (pagePosition) {
+      const current = capturePagePosition();
+      stage.scrollLeft += current.x - pagePosition.x;
+      stage.scrollTop += current.y - pagePosition.y;
+    } else if (anchor?.pageId === preview.bitmap.pageId) {
       const [x, y] = viewport.convertToViewportPoint(...anchor.point);
       stage.scrollLeft = (sheetWidth - width) / 2 + ((preview.bitmap.spread?.x ?? 0) + x) * scale - (anchor.x - stageRect.left);
       stage.scrollTop = (sheetHeight - height) / 2 + ((preview.bitmap.spread?.y ?? 0) + y) * scale - (anchor.y - stageRect.top);
@@ -6919,6 +7189,7 @@ function createPreviewController({
   }
 
   return {
+    stampDropTarget,
     updatePreviewPageInfo,
     replacePreviewRender,
     renderPreview,
@@ -6941,8 +7212,8 @@ return { createPreviewController };
 })();
 
 // src/js/annotation-interaction.mjs
-const _pdfEditorModule39 = (() => {
-const { isTextAnnotation, annotationBounds, annotationHandles, translateAnnotation, resizeExternalAnnotation, annotationFillOpacity, textAnnotationPadding, lineArrowPoints } = _pdfEditorModule15;
+const _pdfEditorModule40 = (() => {
+const { isTextAnnotation, annotationBounds, annotationHandles, translateAnnotation, resizeExternalAnnotation, annotationFillOpacity, textAnnotationPadding, lineArrowPoints } = _pdfEditorModule17;
 
 function pointInBounds([x, y], bounds, margin = 0) {
   return x >= bounds.left - margin && x <= bounds.right + margin
@@ -7018,11 +7289,11 @@ function transformAnnotationDrag({ original, handle, textWidth }, dx, dy, viewBo
       const { anchorX, anchorY, cornerX, cornerY } = handle;
       let scaleX = resizeScale(cornerX - anchorX, dx);
       let scaleY = resizeScale(cornerY - anchorY, dy);
+      if (original.kind === "stamp" || (original.kind === "external" && keepAspect)) {
+        const scale = Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY;
+        scaleX = scaleY = Math.max(scale, 1 / Math.min(Math.abs(cornerX - anchorX), Math.abs(cornerY - anchorY)));
+      }
       if (original.kind === "external") {
-        if (keepAspect) {
-          const scale = Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY;
-          scaleX = scaleY = Math.max(scale, 1 / Math.min(Math.abs(cornerX - anchorX), Math.abs(cornerY - anchorY)));
-        }
         return resizeExternalAnnotation(original, anchorX, anchorY, scaleX, scaleY);
       }
       return { ...original, points: original.points.map(([x, y]) =>
@@ -7077,6 +7348,8 @@ function hitTestAnnotation(annotations, point, scale, includeExternal, measureTe
       if (x >= -tolerance && x <= width + tolerance && y >= -tolerance && y <= height + tolerance) return annotation;
     } else if (annotation.kind === "highlight") {
       if (annotation.quads.some(points => pointInBounds(point, annotationBounds({ points }), tolerance))) return annotation;
+    } else if (annotation.kind === "stamp") {
+      if (pointInBounds(point, annotationBounds(annotation), tolerance)) return annotation;
     } else if (annotation.kind === "rect") {
       const bounds = annotationBounds(annotation);
       const margin = tolerance + annotation.width / 2;
@@ -7105,8 +7378,8 @@ return { pointInBounds, annotationsInSelectionBox, findAnnotationHandle, annotat
 })();
 
 // src/js/annotation-layout.mjs
-const _pdfEditorModule40 = (() => {
-const { annotationBounds, translateAnnotation } = _pdfEditorModule15;
+const _pdfEditorModule41 = (() => {
+const { annotationBounds, translateAnnotation } = _pdfEditorModule17;
 
 const alignmentTolerance = 1e-7;
 
@@ -7236,12 +7509,12 @@ return { annotationGroupBounds, translateAnnotationGroup, arrangeAnnotations };
 })();
 
 // src/js/annotation-gestures.mjs
-const _pdfEditorModule41 = (() => {
-const { clientToPdfPoint, pdfViewportScale } = _pdfEditorModule17;
-const { annotationDragCursor, annotationsInSelectionBox, findAnnotationHandle, fitAnnotationToPage, hitTestAnnotation, pointInBounds, transformAnnotationDrag } = _pdfEditorModule39;
-const { makeAnnotationName } = _pdfEditorModule18;
-const { annotationBounds, isTextAnnotation, renderTextAnnotationImage } = _pdfEditorModule15;
-const { annotationGroupBounds, translateAnnotationGroup } = _pdfEditorModule40;
+const _pdfEditorModule42 = (() => {
+const { clientToPdfPoint, pdfViewportScale } = _pdfEditorModule19;
+const { annotationDragCursor, annotationsInSelectionBox, findAnnotationHandle, fitAnnotationToPage, hitTestAnnotation, pointInBounds, transformAnnotationDrag } = _pdfEditorModule40;
+const { makeAnnotationName } = _pdfEditorModule20;
+const { annotationBounds, isTextAnnotation, renderTextAnnotationImage } = _pdfEditorModule17;
+const { annotationGroupBounds, translateAnnotationGroup } = _pdfEditorModule41;
 const { annotationSelectionLock } = _pdfEditorModule13;
 
 function createAnnotationGestures({
@@ -7713,11 +7986,11 @@ return { createAnnotationGestures };
 })();
 
 // src/js/annotation-clipboard.mjs
-const _pdfEditorModule42 = (() => {
-const { translateAnnotation } = _pdfEditorModule15;
-const { annotationGroupBounds } = _pdfEditorModule40;
-const { makeAnnotationName } = _pdfEditorModule18;
-const { pdfViewportScale } = _pdfEditorModule17;
+const _pdfEditorModule43 = (() => {
+const { translateAnnotation } = _pdfEditorModule17;
+const { annotationGroupBounds } = _pdfEditorModule41;
+const { makeAnnotationName } = _pdfEditorModule20;
+const { pdfViewportScale } = _pdfEditorModule19;
 
 // 全体に同じ移動量を使い、複数の書き込みの配置関係を保つ。
 function createAnnotationCopies(annotations, viewport, offset, nextId) {
@@ -7731,7 +8004,9 @@ function createAnnotationCopies(annotations, viewport, offset, nextId) {
   const dy = Math.max(pageBottom - bottom, Math.min(pageTop - top, targetY - originY));
   const timestamp = new Date().toISOString();
   return annotations.map(annotation => {
-    const { sourceAnnotationRef, originalAppearance, ...copy } = structuredClone(annotation);
+    const { image, ...fields } = annotation;
+    const { sourceAnnotationRef, originalAppearance, ...copy } = structuredClone(fields);
+    if (image) copy.image = image;
     if (originalAppearance) {
       delete copy.appearanceKey;
       delete copy.appearancePageIndex;
@@ -7745,8 +8020,8 @@ return { createAnnotationCopies };
 })();
 
 // src/js/text-highlight.mjs
-const _pdfEditorModule43 = (() => {
-const { clientToPdfPoint } = _pdfEditorModule17;
+const _pdfEditorModule44 = (() => {
+const { clientToPdfPoint } = _pdfEditorModule19;
 
 // PDF.jsが配置した透明な文字層の選択範囲を、PDF座標の四辺形に変換する。
 function selectedPageText(selection, layer) {
@@ -7797,17 +8072,18 @@ return { selectedPageText, selectedHighlightQuads };
 })();
 
 // src/js/annotation-tools.mjs
-const _pdfEditorModule44 = (() => {
-const { createAnnotationGestures } = _pdfEditorModule41;
-const { drawingStyleRanges, loadDrawingStyles, normalizeDrawingStyle, saveDrawingStyles, styleInputProperties, toolStyleFields } = _pdfEditorModule16;
-const { createAnnotationCopies } = _pdfEditorModule42;
+const _pdfEditorModule45 = (() => {
+const { createAnnotationGestures } = _pdfEditorModule42;
+const { drawingStyleRanges, loadDrawingStyles, normalizeDrawingStyle, saveDrawingStyles, styleInputProperties, toolStyleFields } = _pdfEditorModule18;
+const { createAnnotationCopies } = _pdfEditorModule43;
 const { annotationSelectionLock, setAnnotationsLocked } = _pdfEditorModule13;
-const { drawAnnotationsOnCanvas, isTextAnnotation } = _pdfEditorModule15;
-const { selectedHighlightQuads, selectedPageText } = _pdfEditorModule43;
-const { makeAnnotationName } = _pdfEditorModule18;
-const { changeDocumentAnnotations } = _pdfEditorModule30;
-const { arrangeAnnotations } = _pdfEditorModule40;
-const { fitAnnotationToPage } = _pdfEditorModule39;
+const { drawAnnotationsOnCanvas, isTextAnnotation } = _pdfEditorModule17;
+const { selectedHighlightQuads, selectedPageText } = _pdfEditorModule44;
+const { makeAnnotationName } = _pdfEditorModule20;
+const { changeDocumentAnnotations } = _pdfEditorModule31;
+const { arrangeAnnotations } = _pdfEditorModule41;
+const { loadStampImage, placeImageStamp } = _pdfEditorModule15;
+const { fitAnnotationToPage } = _pdfEditorModule40;
 
 function createAnnotationTools({
   activePreviewPage,
@@ -7861,7 +8137,8 @@ function createAnnotationTools({
     if (ui["preview-edit-bars"].hidden || !workspaceAvailable() || interaction.pointerOperation) return false;
     const annotations = selectedAnnotations();
     if (!annotations.length || annotations.some(annotation => annotation.kind === "external")) return false;
-    annotationClipboard.annotations = structuredClone(annotations);
+    annotationClipboard.annotations = annotations.map(annotation => annotation.kind === "stamp"
+      ? annotation : structuredClone(annotation));
     annotationClipboard.sourcePageId = pageView.previewPageId;
     annotationClipboard.pasteCounts.clear();
     updateAnnotationControls();
@@ -8069,6 +8346,29 @@ function createAnnotationTools({
   function updatePageAnnotations(pageId, change) {
     if (workspace.busy || ui["preview-edit-bars"].hidden) return;
     commitDocumentRevision(changeDocumentAnnotations(documentHistory.pages, pageId, change));
+  }
+
+  async function addDroppedStamp(file, target) {
+    const { model, viewport, point } = target;
+    let image;
+    try { image = await loadStampImage(file); }
+    catch {
+      showStatus("画像スタンプを読み込めませんでした。", { error: true });
+      return;
+    }
+    const page = documentHistory.pages.find(page => page.id === model.id);
+    if (!workspaceAvailable() || ui["preview-edit-bars"].hidden || ui["mark-dialog"].open || interaction.pointerOperation
+        || !page || page.addedRotation !== model.addedRotation) return;
+    const annotation = fitAnnotationToPage({
+      ...placeImageStamp(image, point, viewport),
+      id: annotationEditor.nextId++, nativeName: makeAnnotationName("stamp"),
+    }, viewport.viewBox);
+    setPreviewTool("select");
+    commitDocumentRevision(changeDocumentAnnotations(documentHistory.pages, page.id, annotations => [...annotations, annotation]), {
+      ...pageView, previewPageId: page.id,
+    });
+    selectAnnotation(annotation);
+    previewStage.focus({ preventScroll: true });
   }
 
   function replacePageAnnotation(pageId, replacement) {
@@ -8286,6 +8586,7 @@ function createAnnotationTools({
 
   return {
     ...gestures,
+    addDroppedStamp,
     selectedAnnotation,
     hasAnnotationGroupSelection,
     copySelectedAnnotations,
@@ -8305,7 +8606,7 @@ return { createAnnotationTools };
 })();
 
 // src/js/editor-shortcuts.mjs
-const _pdfEditorModule45 = (() => {
+const _pdfEditorModule46 = (() => {
 // キーの解釈だけを担当する。文書の変更・preventDefault・フォーカス移動は呼び出し元で行う。
 function resolveEditorShortcut(event, state) {
   if (event.defaultPrevented || event.isComposing || state.dialogOpen) return null;
@@ -8347,10 +8648,10 @@ return { resolveEditorShortcut };
 })();
 
 // src/js/editor-input.mjs
-const _pdfEditorModule46 = (() => {
+const _pdfEditorModule47 = (() => {
 const { saveViewPreferences } = _pdfEditorModule2;
-const { resolveEditorShortcut } = _pdfEditorModule45;
-const { adjacentPreviewIndex } = _pdfEditorModule24;
+const { resolveEditorShortcut } = _pdfEditorModule46;
+const { adjacentPreviewIndex } = _pdfEditorModule25;
 
 function createEditorInput({
   activePreviewPage,
@@ -8493,13 +8794,13 @@ const { createDocumentPropertiesUi } = _pdfEditorModule5;
 const { createUnsavedChangesGuard } = _pdfEditorModule6;
 const { clearSavedEditorSettings } = _pdfEditorModule1;
 const { bindSettingsMenu } = _pdfEditorModule7;
-const { createDownloadPanel } = _pdfEditorModule28;
-const { createEditorFiles } = _pdfEditorModule29;
-const { createPageActions } = _pdfEditorModule31;
-const { createPageList } = _pdfEditorModule33;
-const { createPreviewController } = _pdfEditorModule38;
-const { createAnnotationTools } = _pdfEditorModule44;
-const { createEditorInput } = _pdfEditorModule46;
+const { createDownloadPanel } = _pdfEditorModule29;
+const { createEditorFiles } = _pdfEditorModule30;
+const { createPageActions } = _pdfEditorModule32;
+const { createPageList } = _pdfEditorModule34;
+const { createPreviewController } = _pdfEditorModule39;
+const { createAnnotationTools } = _pdfEditorModule45;
+const { createEditorInput } = _pdfEditorModule47;
 
 const ui = Object.fromEntries(
   Array.from(document.querySelectorAll("[id]"), node => [node.id, node])
@@ -8535,6 +8836,7 @@ const preview = {
   zoomFrame: null,
   refineTimer: null,
   centerOnRender: false,
+  pendingPagePosition: null,
   fitSize: null,
 };
 const previewDisplay = { mode: "single", cover: true, direction: "left" };
@@ -8573,6 +8875,8 @@ const files = createEditorFiles({
   annotationEditor, interaction, unsavedChanges, downloadPanel, pageView,
   commitDocumentRevision: (...args) => pages.commitDocumentRevision(...args),
   previewPageIds: (...args) => previewUi.previewPageIds(...args),
+  stampDropTarget: (...args) => previewUi.stampDropTarget(...args),
+  addDroppedStamp: (...args) => tools.addDroppedStamp(...args),
 });
 
 const pages = createPageActions({

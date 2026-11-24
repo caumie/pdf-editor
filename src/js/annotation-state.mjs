@@ -1,7 +1,7 @@
 // 画面内の識別子・表示キャッシュを除き、読み込み時と現在の保存内容を比較する。
 // キー順やオブジェクトの作り直しでは変更扱いにせず、配列の座標順は保つ。
 export function annotationSavedState(annotation) {
-  const { id, appearanceKey, appearancePageIndex, originalAppearance, sourceAnnotationRef, ...saved } = annotation;
+  const { id, appearanceKey, appearancePageIndex, originalAppearance, sourceAnnotationRef, image, ...saved } = annotation;
   function ordered(value) {
     if (Array.isArray(value)) return value.map(ordered);
     if (value && typeof value === "object") {

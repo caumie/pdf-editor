@@ -46,6 +46,7 @@ const preview = {
   zoomFrame: null,
   refineTimer: null,
   centerOnRender: false,
+  pendingPagePosition: null,
   fitSize: null,
 };
 const previewDisplay = { mode: "single", cover: true, direction: "left" };
@@ -84,6 +85,8 @@ const files = createEditorFiles({
   annotationEditor, interaction, unsavedChanges, downloadPanel, pageView,
   commitDocumentRevision: (...args) => pages.commitDocumentRevision(...args),
   previewPageIds: (...args) => previewUi.previewPageIds(...args),
+  stampDropTarget: (...args) => previewUi.stampDropTarget(...args),
+  addDroppedStamp: (...args) => tools.addDroppedStamp(...args),
 });
 
 const pages = createPageActions({

@@ -15,7 +15,9 @@ export function createAnnotationCopies(annotations, viewport, offset, nextId) {
   const dy = Math.max(pageBottom - bottom, Math.min(pageTop - top, targetY - originY));
   const timestamp = new Date().toISOString();
   return annotations.map(annotation => {
-    const { sourceAnnotationRef, originalAppearance, ...copy } = structuredClone(annotation);
+    const { image, ...fields } = annotation;
+    const { sourceAnnotationRef, originalAppearance, ...copy } = structuredClone(fields);
+    if (image) copy.image = image;
     if (originalAppearance) {
       delete copy.appearanceKey;
       delete copy.appearancePageIndex;
