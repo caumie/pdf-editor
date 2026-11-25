@@ -25,8 +25,21 @@ export function createPdfAnnotationCodec(pdfLib) {
   const text = PDFHexString.fromText;
   const token = PDFString.of;
   const fontsByDocument = new WeakMap();
+  const stampAssetsByDocument = new WeakMap();
   const { rgb, pushGraphicsState, popGraphicsState, rectangle, fill, stroke, setStrokingColor, setFillingColor,
     setLineWidth, setLineCap, setLineJoin, moveTo, lineTo, closePath, setGraphicsState, concatTransformationMatrix, drawObject } = pdfLib;
+
+  async function stampAsset(output, bytes) {
+    let assets = stampAssetsByDocument.get(output);
+    if (!assets) stampAssetsByDocument.set(output, assets = new WeakMap());
+    let asset = assets.get(bytes);
+    if (!asset) {
+      const image = await output.embedPng(bytes);
+      asset = { appearance: image.ref, source: output.context.register(output.context.stream(bytes)) };
+      assets.set(bytes, asset);
+    }
+    return asset;
+  }
 
   async function write(output, page, annotation, existingRef) {
     const bounds = annotationBounds(annotation);
@@ -69,10 +82,10 @@ export function createPdfAnnotationCodec(pdfLib) {
     const { id, nativeName, sourceAnnotationRef, originalAppearance, appearancePageIndex, appearanceKey, text: contents, points, quads, x, y, createdAt, modifiedAt, image: stampImage, ...privateData } = annotation;
 
     if (stamp) {
-      const image = await output.embedPng(stampImage);
-      resources.XObject.StampImage = image.ref;
+      const asset = await stampAsset(output, stampImage);
+      resources.XObject.StampImage = asset.appearance;
       native.Name = name("Approved");
-      native.PPEStampImage = context.register(context.stream(stampImage));
+      native.PPEStampImage = asset.source;
       const matrix = {
         0: [width, 0, 0, height, 0, 0],
         90: [0, height, -width, 0, width, 0],

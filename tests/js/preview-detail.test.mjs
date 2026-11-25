@@ -61,9 +61,12 @@ function fixture(t, { defer = false } = {}) {
   } };
 }
 
-test("ズームは700%を上限として留める", () => {
+test("ズームは10000%を上限として留める", () => {
   assert.equal(clampPreviewZoom(5.6), 5.6);
-  assert.equal(clampPreviewZoom(7.1), 7);
+  assert.equal(clampPreviewZoom(29.9), 29.9);
+  assert.equal(clampPreviewZoom(99.9), 99.9);
+  assert.equal(clampPreviewZoom(100), 100);
+  assert.equal(clampPreviewZoom(101), 100);
   assert.equal(clampPreviewZoom(0.3), 0.4);
 });
 
@@ -73,7 +76,7 @@ test("ページ全体で足りる間は再描画せず、高倍率では実際�
   await f.settle();
   assert.equal(f.crops.length, 0);
 
-  for (const zoom of [3, 5, 7]) {
+  for (const zoom of [3, 5, 7, 30, 100]) {
     const { layer } = f.mount(zoom);
     await f.settle();
     const crop = f.crops.at(-1);
@@ -84,8 +87,8 @@ test("ページ全体で足りる間は再描画せず、高倍率では実際�
     assert.equal(crop.viewport.rotation, 90);
     assert.deepEqual([...layer.children], [crop.canvas]);
   }
-  assert.equal(f.crops.length, 3);
-  assert.equal(f.base.length, 4);
+  assert.equal(f.crops.length, 5);
+  assert.equal(f.base.length, 6);
 });
 
 test("表示範囲が描画済み領域に収まる間は再利用し、パン・縮小・ページ切替時に古い描画を解放する", async t => {

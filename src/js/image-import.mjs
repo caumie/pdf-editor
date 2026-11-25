@@ -1,10 +1,12 @@
-export function sourceImageFormat(file) {
-  const type = file.type?.toLowerCase();
-  if (type === "image/jpeg") return "JPEG";
-  if (type === "image/png") return "PNG";
-  if (/\.jpe?g$/i.test(file.name)) return "JPEG";
-  if (/\.png$/i.test(file.name)) return "PNG";
+export function imageFormatForType(type) {
+  if (["image/jpeg", "image/jpg", "image/pjpeg", "public.jpeg"].includes(type)) return "JPEG";
+  if (["image/png", "image/x-png", "public.png"].includes(type)) return "PNG";
   return null;
+}
+
+export function sourceImageFormat(file) {
+  return imageFormatForType(file.type?.toLowerCase())
+    ?? (/\.jpe?g$/i.test(file.name) ? "JPEG" : /\.png$/i.test(file.name) ? "PNG" : null);
 }
 
 function* jpegSegments(bytes) {

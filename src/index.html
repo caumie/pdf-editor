@@ -102,7 +102,8 @@
           <button class="button icon-button" id="settings-menu-toggle" type="button" aria-label="設定" title="設定"
             aria-expanded="false" aria-controls="settings-menu"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3h4l.6 2.5 2 .9L19 5.2l2 3.5-1.8 1.8v3l1.8 1.8-2 3.5-2.4-1.2-2 .9L14 21h-4l-.6-2.5-2-.9L5 18.8l-2-3.5 1.8-1.8v-3L3 8.7l2-3.5 2.4 1.2 2-.9z"/><circle cx="12" cy="12" r="3"/></svg></button>
           <div class="settings-menu" id="settings-menu" hidden>
-            <div class="settings-version">バージョン v0.1.0</div>
+            <!-- バージョン表示は package.json からビルド時に同期 -->
+            <div class="settings-version">バージョン v0.1.1</div>
             <button class="button" id="reset-settings" type="button">設定をデフォルトに戻す</button>
           </div>
         </div>

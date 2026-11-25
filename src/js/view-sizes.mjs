@@ -3,7 +3,7 @@ import { editorSettingKey } from "./settings-storage.mjs";
 const viewSizesStorageKey = editorSettingKey("view-sizes");
 
 export const thumbnailSizes = { small: [104, 94], medium: [146, 145], large: [218, 218] };
-export const previewZoomLimits = { min: 0.4, max: 7 };
+export const previewZoomLimits = { min: 0.4, max: 100 };
 
 export function clampPreviewZoom(zoom) {
   return Math.min(previewZoomLimits.max, Math.max(previewZoomLimits.min, zoom));

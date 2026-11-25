@@ -6,7 +6,7 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { renderStats } from "../support/render-pdfjs.mjs";
 import { installEditorHandler } from "./editor-fixture.mjs";
 import { loadStampImage, placeImageStamp } from "../../src/js/image-stamp.mjs";
-import { readImageDpi } from "../../src/js/image-import.mjs";
+import { imageFormatForType, readImageDpi } from "../../src/js/image-import.mjs";
 import { makeAnnotationName } from "../../src/js/pdf-annotations.mjs";
 import { createPdfExporter } from "../../src/js/pdf-export.mjs";
 import { clientToPdfPoint } from "../../src/js/page-coordinates.mjs";
@@ -24,7 +24,7 @@ test("一覧と用紙にだけファイルを振り分け、書き込み無効�
   for (const node of [list, paper, stage]) node.classList.remove = node.classList.delete.bind(node.classList);
   let editable = false;
   const context = createContext({
-    Node,
+    Node, imageFormatForType,
     window: { addEventListener: (type, callback) => handlers.set(type, callback) },
     ui: { "page-area": list, "preview-stage": stage, "pages-panel": { contains: target => target === list } },
     workspaceAvailable: () => true,
@@ -63,6 +63,9 @@ test("一覧と用紙にだけファイルを振り分け、書き込み無効�
   assert.equal(stage.classList.has("file-drop-active"), false);
   await send("drop", list, pdf, image);
   assert.deepEqual(imports, [pdf, image]);
+  const gif = { name: "animation.gif", type: "image/gif" };
+  assert.equal(await send("dragover", list, gif), "none");
+  assert.equal(await send("dragover", paper, gif), "none");
   const osImage = { name: "mark", type: "public.png" };
   assert.equal(await send("dragover", paper, osImage), "copy");
   await send("drop", paper, osImage);
@@ -208,4 +211,18 @@ test("回転ページの透明PNGをPDFスタンプとして描画し、再読�
   assert.equal(reopened.annotations.length, 1);
   assert.deepEqual(reopened.annotations[0].points, moved.points);
   assert.notDeepEqual(await renderStats(second), await renderStats(first));
+
+  const copied = { ...translateAnnotation(stamp, 10, 20), nativeName: makeAnnotationName("stamp") };
+  const duplicates = await exporter.assembleOutputPdf([
+    { ...model, annotations: [stamp, copied] },
+  ], (await session(blank)).inputs);
+  const saved = await lib.PDFDocument.load(duplicates);
+  const refs = saved.getPage(0).node.Annots();
+  const sourceKey = lib.PDFName.of("PPEStampImage");
+  assert.equal(refs.size(), 2);
+  assert.equal(refs.lookup(0).get(sourceKey).toString(), refs.lookup(1).get(sourceKey).toString());
+  const appearanceImage = annotation => annotation.lookup(lib.PDFName.of("AP"))
+    .lookup(lib.PDFName.of("N")).dict.lookup(lib.PDFName.of("Resources"))
+    .lookup(lib.PDFName.of("XObject")).get(lib.PDFName.of("StampImage")).toString();
+  assert.equal(appearanceImage(refs.lookup(0)), appearanceImage(refs.lookup(1)));
 });

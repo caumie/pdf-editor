@@ -1625,7 +1625,8 @@ main {
           <button class="button icon-button" id="settings-menu-toggle" type="button" aria-label="設定" title="設定"
             aria-expanded="false" aria-controls="settings-menu"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3h4l.6 2.5 2 .9L19 5.2l2 3.5-1.8 1.8v3l1.8 1.8-2 3.5-2.4-1.2-2 .9L14 21h-4l-.6-2.5-2-.9L5 18.8l-2-3.5 1.8-1.8v-3L3 8.7l2-3.5 2.4 1.2 2-.9z"/><circle cx="12" cy="12" r="3"/></svg></button>
           <div class="settings-menu" id="settings-menu" hidden>
-            <div class="settings-version">バージョン v0.1.0</div>
+            <!-- バージョン表示は package.json からビルド時に同期 -->
+            <div class="settings-version">バージョン v0.1.1</div>
             <button class="button" id="reset-settings" type="button">設定をデフォルトに戻す</button>
           </div>
         </div>
@@ -1934,7 +1935,7 @@ const { editorSettingKey } = _pdfEditorModule1;
 const viewSizesStorageKey = editorSettingKey("view-sizes");
 
 const thumbnailSizes = { small: [104, 94], medium: [146, 145], large: [218, 218] };
-const previewZoomLimits = { min: 0.4, max: 7 };
+const previewZoomLimits = { min: 0.4, max: 100 };
 
 function clampPreviewZoom(zoom) {
   return Math.min(previewZoomLimits.max, Math.max(previewZoomLimits.min, zoom));
@@ -2929,13 +2930,15 @@ return { annotationLockMask, annotationIsLocked, annotationOutputFlags, annotati
 
 // src/js/image-import.mjs
 const _pdfEditorModule14 = (() => {
-function sourceImageFormat(file) {
-  const type = file.type?.toLowerCase();
-  if (type === "image/jpeg") return "JPEG";
-  if (type === "image/png") return "PNG";
-  if (/\.jpe?g$/i.test(file.name)) return "JPEG";
-  if (/\.png$/i.test(file.name)) return "PNG";
+function imageFormatForType(type) {
+  if (["image/jpeg", "image/jpg", "image/pjpeg", "public.jpeg"].includes(type)) return "JPEG";
+  if (["image/png", "image/x-png", "public.png"].includes(type)) return "PNG";
   return null;
+}
+
+function sourceImageFormat(file) {
+  return imageFormatForType(file.type?.toLowerCase())
+    ?? (/\.jpe?g$/i.test(file.name) ? "JPEG" : /\.png$/i.test(file.name) ? "PNG" : null);
 }
 
 function* jpegSegments(bytes) {
@@ -3122,7 +3125,7 @@ async function createImagePdf(pdfLib, file, format) {
   };
 }
 
-return { sourceImageFormat, readImageDpi, createImagePdf };
+return { imageFormatForType, sourceImageFormat, readImageDpi, createImagePdf };
 })();
 
 // src/js/image-stamp.mjs
@@ -3890,8 +3893,21 @@ function createPdfAnnotationCodec(pdfLib) {
   const text = PDFHexString.fromText;
   const token = PDFString.of;
   const fontsByDocument = new WeakMap();
+  const stampAssetsByDocument = new WeakMap();
   const { rgb, pushGraphicsState, popGraphicsState, rectangle, fill, stroke, setStrokingColor, setFillingColor,
     setLineWidth, setLineCap, setLineJoin, moveTo, lineTo, closePath, setGraphicsState, concatTransformationMatrix, drawObject } = pdfLib;
+
+  async function stampAsset(output, bytes) {
+    let assets = stampAssetsByDocument.get(output);
+    if (!assets) stampAssetsByDocument.set(output, assets = new WeakMap());
+    let asset = assets.get(bytes);
+    if (!asset) {
+      const image = await output.embedPng(bytes);
+      asset = { appearance: image.ref, source: output.context.register(output.context.stream(bytes)) };
+      assets.set(bytes, asset);
+    }
+    return asset;
+  }
 
   async function write(output, page, annotation, existingRef) {
     const bounds = annotationBounds(annotation);
@@ -3934,10 +3950,10 @@ function createPdfAnnotationCodec(pdfLib) {
     const { id, nativeName, sourceAnnotationRef, originalAppearance, appearancePageIndex, appearanceKey, text: contents, points, quads, x, y, createdAt, modifiedAt, image: stampImage, ...privateData } = annotation;
 
     if (stamp) {
-      const image = await output.embedPng(stampImage);
-      resources.XObject.StampImage = image.ref;
+      const asset = await stampAsset(output, stampImage);
+      resources.XObject.StampImage = asset.appearance;
       native.Name = name("Approved");
-      native.PPEStampImage = context.register(context.stream(stampImage));
+      native.PPEStampImage = asset.source;
       const matrix = {
         0: [width, 0, 0, height, 0, 0],
         90: [0, height, -width, 0, width, 0],
@@ -5392,7 +5408,7 @@ const { openSourcePdf } = _pdfEditorModule26;
 const { loadLibraries } = _pdfEditorModule21;
 const { ExportSourceError, createPdfExporter } = _pdfEditorModule24;
 const { createExportPlan, createExportRunner } = _pdfEditorModule28;
-const { sourceImageFormat } = _pdfEditorModule14;
+const { imageFormatForType, sourceImageFormat } = _pdfEditorModule14;
 const { readSourcePdfProperties, validatePdfOutputSettings } = _pdfEditorModule3;
 const { openExternalAnnotationRenderer } = _pdfEditorModule22;
 const { duplicatePdfFormWarning, unsupportedPdfWarning } = _pdfEditorModule10;
@@ -5645,8 +5661,17 @@ function createEditorFiles({
       return items.length > 0 || transfer.files?.length > 0 || Array.from(transfer.types ?? []).includes("Files");
     }
 
+    function isPdfType(type) {
+      return type === "application/pdf" || type === "com.adobe.pdf";
+    }
+
     function isPdf(file) {
-      return ["application/pdf", "com.adobe.pdf"].includes(file.type.toLowerCase()) || /\.pdf$/i.test(file.name);
+      return isPdfType(file.type.toLowerCase()) || /\.pdf$/i.test(file.name);
+    }
+
+    function possibleImageType(type) {
+      return !type || type === "application/octet-stream" || type === "public.image" || type.startsWith("dyn.")
+        || Boolean(imageFormatForType(type));
     }
 
     function hover(event) {
@@ -5656,14 +5681,14 @@ function createEditorFiles({
       if (!isFileDrag(transfer, items)) return;
       event.preventDefault();
       const onList = event.target instanceof Node && ui["pages-panel"].contains(event.target);
-      // OSからのドラッグ中は種類が空欄だったり、OS独自の型で届いたりする。
-      // PDFと複数ファイルは除外し、それ以外はドロップ後に画像の内容で確かめる。
-      const possibleStamp = items.length <= 1 && !items.some(item =>
-        ["application/pdf", "com.adobe.pdf"].includes(item.type.toLowerCase()));
+      // 種別が不明な場合は仮受付し、ドロップ後に確かめる。
+      const types = items.map(item => item.type.toLowerCase());
+      const possiblePages = !types.length || types.some(type => isPdfType(type) || possibleImageType(type));
+      const possibleStamp = types.length <= 1 && types.every(possibleImageType);
       let target = null;
       if (workspaceAvailable()) {
-        if (onList) target = list;
-        else if (possibleStamp && stampDropTarget(event)) target = ui["preview-stage"];
+        if (onList && possiblePages) target = list;
+        else if (!onList && possibleStamp && stampDropTarget(event)) target = ui["preview-stage"];
       }
       mark(target);
       transfer.dropEffect = target ? "copy" : "none";
@@ -6011,6 +6036,7 @@ function createPageList({
   function mountThumbnail(card, thumbnail) {
     const image = document.createElement("img");
     image.alt = "";
+    image.draggable = false;
     image.src = thumbnail.url;
     card.frame.replaceChildren(image);
     card.thumbnail = thumbnail;
@@ -6155,29 +6181,42 @@ function createPageList({
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", draggedPageId);
     });
-    grid.addEventListener("dragover", event => {
-      if (!draggedPageId || workspace.busy) return;
+    function dropPosition(event) {
       const card = event.target.closest(".page-card");
-      if (!card || card.dataset.id === draggedPageId) {
+      if (!card || card.dataset.id === draggedPageId) return null;
+      const rect = card.getBoundingClientRect();
+      return { card, after: event.clientX >= rect.left + rect.width / 2 };
+    }
+
+    grid.addEventListener("dragover", event => {
+      if (!draggedPageId) return;
+      // 一覧内の移動を外部ファイルの取り込みハンドラーへ渡さない。
+      event.stopPropagation();
+      const position = !workspace.busy && dropPosition(event);
+      if (!position) {
         clearDropMarker();
         return;
       }
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
+      const { card, after } = position;
       if (markedDrop !== card) clearDropMarker();
       markedDrop = card;
-      const rect = card.getBoundingClientRect();
-      card.dataset.drop = event.clientX >= rect.left + rect.width / 2 ? "after" : "before";
+      card.dataset.drop = after ? "after" : "before";
     });
     grid.addEventListener("dragleave", event => {
       if (!grid.contains(event.relatedTarget)) clearDropMarker();
     });
     grid.addEventListener("drop", event => {
-      if (!draggedPageId || !markedDrop || workspace.busy) return;
+      if (!draggedPageId) return;
+      event.stopPropagation();
       event.preventDefault();
-      reorderPagesByDrop(draggedPageId, markedDrop.dataset.id, markedDrop.dataset.drop === "after");
+      // dragleaveで挿入マーカーが消えていても、実際のドロップ先で確定する。
+      const position = !workspace.busy && dropPosition(event);
+      const sourceId = draggedPageId;
       draggedPageId = null;
       clearDropMarker();
+      if (position) reorderPagesByDrop(sourceId, position.card.dataset.id, position.after);
     });
     grid.addEventListener("dragend", () => {
       draggedPageId = null;

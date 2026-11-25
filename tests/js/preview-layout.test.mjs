@@ -243,6 +243,7 @@ test("スクロールで描画済みサムネイルを再利用し、古い画�
   const [a, b, third] = cards.values();
   show(a);
   const original = a.thumbnail;
+  assert.equal(a.frame.firstElementChild.draggable, false);
   show(a, false); show(a);
   assert.equal(a.thumbnail, original);
   c.updateThumbnailSize("large");

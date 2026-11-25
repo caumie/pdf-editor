@@ -98,6 +98,7 @@ export function createPageList({
   function mountThumbnail(card, thumbnail) {
     const image = document.createElement("img");
     image.alt = "";
+    image.draggable = false;
     image.src = thumbnail.url;
     card.frame.replaceChildren(image);
     card.thumbnail = thumbnail;
@@ -242,29 +243,42 @@ export function createPageList({
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", draggedPageId);
     });
-    grid.addEventListener("dragover", event => {
-      if (!draggedPageId || workspace.busy) return;
+    function dropPosition(event) {
       const card = event.target.closest(".page-card");
-      if (!card || card.dataset.id === draggedPageId) {
+      if (!card || card.dataset.id === draggedPageId) return null;
+      const rect = card.getBoundingClientRect();
+      return { card, after: event.clientX >= rect.left + rect.width / 2 };
+    }
+
+    grid.addEventListener("dragover", event => {
+      if (!draggedPageId) return;
+      // 一覧内の移動を外部ファイルの取り込みハンドラーへ渡さない。
+      event.stopPropagation();
+      const position = !workspace.busy && dropPosition(event);
+      if (!position) {
         clearDropMarker();
         return;
       }
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
+      const { card, after } = position;
       if (markedDrop !== card) clearDropMarker();
       markedDrop = card;
-      const rect = card.getBoundingClientRect();
-      card.dataset.drop = event.clientX >= rect.left + rect.width / 2 ? "after" : "before";
+      card.dataset.drop = after ? "after" : "before";
     });
     grid.addEventListener("dragleave", event => {
       if (!grid.contains(event.relatedTarget)) clearDropMarker();
     });
     grid.addEventListener("drop", event => {
-      if (!draggedPageId || !markedDrop || workspace.busy) return;
+      if (!draggedPageId) return;
+      event.stopPropagation();
       event.preventDefault();
-      reorderPagesByDrop(draggedPageId, markedDrop.dataset.id, markedDrop.dataset.drop === "after");
+      // dragleaveで挿入マーカーが消えていても、実際のドロップ先で確定する。
+      const position = !workspace.busy && dropPosition(event);
+      const sourceId = draggedPageId;
       draggedPageId = null;
       clearDropMarker();
+      if (position) reorderPagesByDrop(sourceId, position.card.dataset.id, position.after);
     });
     grid.addEventListener("dragend", () => {
       draggedPageId = null;

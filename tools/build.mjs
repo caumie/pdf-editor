@@ -1,4 +1,4 @@
-// Build the standalone HTML without changing the separately publishable src/ tree.
+// Sync release metadata and build the standalone HTML from the static source tree.
 import { Buffer } from "node:buffer";
 import { existsSync, globSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ const root = new URL("../", import.meta.url);
 const src = new URL("src/", root);
 const vendor = new URL("vendor/", src);
 const output = new URL("dist/pdf-editor.html", root);
+const checkOnly = process.argv.includes("--check");
 const read = (file, base = src) => readFileSync(new URL(file, base), "utf8").replace(/\r\n?/g, "\n");
 const entry = '<script type="module" src="./js/editor.mjs"></script>';
 const serverCsp = "script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self';";
@@ -89,7 +90,19 @@ function replaceOnce(html, marker, replacement) {
   return html.replace(marker, () => replacement);
 }
 
-let html = read("index.html");
+const { version } = JSON.parse(read("package.json", root));
+if (typeof version !== "string" || !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/.test(version)) {
+  throw new Error("package.json の version を確認してください。");
+}
+const staticIndex = read("index.html");
+const settingsVersion = staticIndex.match(/<div class="settings-version">[^<]*<\/div>/g);
+if (settingsVersion?.length !== 1) throw new Error("設定メニューのバージョン表示を特定できません。");
+let html = replaceOnce(staticIndex, settingsVersion[0], `<div class="settings-version">バージョン v${version}</div>`);
+if (html !== staticIndex) {
+  if (checkOnly) throw new Error("設定メニューのバージョンを npm run build で更新してください。");
+  writeFileSync(new URL("index.html", src), html);
+}
+
 const iconPath = "./pdf-editor.svg";
 const iconUrl = "data:image/svg+xml;base64," + readFileSync(new URL(iconPath, src)).toString("base64");
 // Use a rasterized copy of the same SVG for the standalone file's tab icon.
@@ -108,7 +121,7 @@ html = replaceOnce(html, serverCsp, offlineCsp);
 html = replaceOnce(html, "img-src 'self' blob: data:;", "img-src blob: data:;");
 html = replaceOnce(html, "</body>", `<!-- 外部ライブラリと補助データ -->\n${embeddedVendor()}\n</body>`);
 const result = Buffer.from(html);
-if (process.argv.includes("--check")) {
+if (checkOnly) {
   if (!existsSync(output) || !readFileSync(output).equals(result)) {
     throw new Error("dist/pdf-editor.html を npm run build で再生成してください。");
   }

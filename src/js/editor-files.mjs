@@ -2,7 +2,7 @@ import { openSourcePdf } from "./pdf-preview.mjs";
 import { loadLibraries } from "./libraries.mjs";
 import { ExportSourceError, createPdfExporter } from "./pdf-export.mjs";
 import { createExportPlan, createExportRunner } from "./export-job.mjs";
-import { sourceImageFormat } from "./image-import.mjs";
+import { imageFormatForType, sourceImageFormat } from "./image-import.mjs";
 import { readSourcePdfProperties, validatePdfOutputSettings } from "./pdf-properties.mjs";
 import { openExternalAnnotationRenderer } from "./external-annotations.mjs";
 import { duplicatePdfFormWarning, unsupportedPdfWarning } from "./pdf-feature-policy.mjs";
@@ -255,8 +255,17 @@ export function createEditorFiles({
       return items.length > 0 || transfer.files?.length > 0 || Array.from(transfer.types ?? []).includes("Files");
     }
 
+    function isPdfType(type) {
+      return type === "application/pdf" || type === "com.adobe.pdf";
+    }
+
     function isPdf(file) {
-      return ["application/pdf", "com.adobe.pdf"].includes(file.type.toLowerCase()) || /\.pdf$/i.test(file.name);
+      return isPdfType(file.type.toLowerCase()) || /\.pdf$/i.test(file.name);
+    }
+
+    function possibleImageType(type) {
+      return !type || type === "application/octet-stream" || type === "public.image" || type.startsWith("dyn.")
+        || Boolean(imageFormatForType(type));
     }
 
     function hover(event) {
@@ -266,14 +275,14 @@ export function createEditorFiles({
       if (!isFileDrag(transfer, items)) return;
       event.preventDefault();
       const onList = event.target instanceof Node && ui["pages-panel"].contains(event.target);
-      // OSからのドラッグ中は種類が空欄だったり、OS独自の型で届いたりする。
-      // PDFと複数ファイルは除外し、それ以外はドロップ後に画像の内容で確かめる。
-      const possibleStamp = items.length <= 1 && !items.some(item =>
-        ["application/pdf", "com.adobe.pdf"].includes(item.type.toLowerCase()));
+      // 種別が不明な場合は仮受付し、ドロップ後に確かめる。
+      const types = items.map(item => item.type.toLowerCase());
+      const possiblePages = !types.length || types.some(type => isPdfType(type) || possibleImageType(type));
+      const possibleStamp = types.length <= 1 && types.every(possibleImageType);
       let target = null;
       if (workspaceAvailable()) {
-        if (onList) target = list;
-        else if (possibleStamp && stampDropTarget(event)) target = ui["preview-stage"];
+        if (onList && possiblePages) target = list;
+        else if (!onList && possibleStamp && stampDropTarget(event)) target = ui["preview-stage"];
       }
       mark(target);
       transfer.dropEffect = target ? "copy" : "none";

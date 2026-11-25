@@ -1,7 +1,7 @@
 {
   "name": "pdf-editor",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Offline PDF editor and static build",
   "engines": {
     "node": ">=24 <25"

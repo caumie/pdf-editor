@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
+import { createContext } from "node:vm";
+import { installEditorHandler } from "./editor-fixture.mjs";
+import { createPageActions } from "../../src/js/page-actions.mjs";
 import { createDocumentHistory } from "../../src/js/document-history.mjs";
 import { changeDocumentAnnotations, placeDocumentPages, rotateDocumentPages } from "../../src/js/document-pages.mjs";
 import { createExportPlan } from "../../src/js/export-job.mjs";
@@ -140,4 +143,49 @@ test("PDFのCreatorと補助情報が変わっても、注釈を識別して重�
   const outputs = refs.map(ref => reopened.context.lookup(ref));
   assert.deepEqual(outputs.map(dict => dict.get(PDFName.of("Subtype")).decodeText()), ["Line", "Text"]);
   assert.equal(codec.read(outputPage, refs[0]).annotation.nativeName, nativeName);
+});
+
+
+test("挿入マーカーが消えた後にドロップしても、一覧と書き出し順を更新する", () => {
+  const documentHistory = createDocumentHistory();
+  documentHistory.commit(["a", "b", "c"].map(id => ({ id })));
+  const pageView = { selectedPageIds: new Set(["a"]), previewPageId: "a" };
+  const workspace = { busy: false };
+  const updates = [];
+  const actions = createPageActions({
+    documentHistory, pageView, workspace,
+    refreshDocumentViews: () => updates.push(documentHistory.pages.map(page => page.id)),
+  });
+  const listeners = new Map();
+  const grid = {
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    contains: element => Boolean(element),
+  };
+  const context = createContext({ ui: { "page-grid": grid }, workspace, reorderPagesByDrop: actions.reorderPagesByDrop });
+  installEditorHandler(context, "bindPageDrag");
+  context.bindPageDrag();
+  const card = id => ({ dataset: { id }, getBoundingClientRect: () => ({ left: 0, width: 100 }) });
+  const source = card("a"), destination = card("c");
+  const dataTransfer = { setData() {} };
+  const emit = (type, target) => {
+    const event = {
+      target: { closest: () => target }, clientX: 75, dataTransfer,
+      preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() { this.stopped = true; },
+    };
+    listeners.get(type)(event);
+    return event;
+  };
+  emit("dragstart", source);
+  assert.equal(emit("dragover", destination).stopped, true);
+  assert.equal(dataTransfer.dropEffect, "move");
+  assert.equal(destination.dataset.drop, "after");
+  emit("dragleave", destination);
+  assert.equal(destination.dataset.drop, undefined);
+  assert.equal(emit("drop", destination).stopped, true);
+  assert.deepEqual(updates, [["b", "c", "a"]]);
+  assert.deepEqual(documentHistory.pages.map(page => page.id), ["b", "c", "a"]);
+  assert.equal(pageView.previewPageId, "a");
+  documentHistory.step("undo");
+  assert.deepEqual(documentHistory.pages.map(page => page.id), ["a", "b", "c"]);
 });
